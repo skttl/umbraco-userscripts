@@ -12,6 +12,8 @@ A collection of userscripts that enhance the Kudu interface for Umbraco Cloud en
 
 Adds a styled event log viewer directly inside the Kudu interface, making it easy to monitor Windows Event Logs without navigating away from the Kudu dashboard.
 
+![Event Log Viewer](screenshots/event_log_viewer.png)
+
 #### Features
 
 - **Navbar Integration**: Adds an "Event Log" link to the Kudu navbar
@@ -40,6 +42,8 @@ Adds a styled event log viewer directly inside the Kudu interface, making it eas
 
 Provides a comprehensive deployment monitoring interface within Kudu, allowing you to track deployment status, view logs, and trigger new deployments.
 
+![Deployment Status](screenshots/deployment_status.png)
+
 #### Features
 
 - **Deployment Dashboard**: View latest deployment status and full deployment history
@@ -66,6 +70,16 @@ Provides a comprehensive deployment monitoring interface within Kudu, allowing y
 - **Interactive History Table**: Click any deployment to view full details in a modal
 - **URL State Management**: Supports deep linking with `?deployments` query parameter
 - **Browser History**: Proper back/forward navigation support
+
+#### Screenshots
+
+**Deployment History & Status**
+
+![Deployment History](screenshots/deployment_history_status.png)
+
+**File Manifest Viewer**
+
+![Deployment Files](screenshots/deployment_files.png)
 
 #### Usage
 
