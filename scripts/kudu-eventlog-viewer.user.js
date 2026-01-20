@@ -1,11 +1,20 @@
-    // ==UserScript==
-    // @name         Kudu Event Log Viewer
-    // @namespace    http://tampermonkey.net/
-    // @version      1.0
-    // @description  Add a styled event log viewer inside Kudu
+// ==UserScript==
+// @name         Kudu Event Log Viewer
+// @namespace    https://github.com/skttl/umbraco-userscripts
+// @version      1.0.0
+// @description  Add a styled event log viewer inside Kudu for Umbraco Cloud
+// @author       skttl
+// @homepage     https://github.com/skttl/umbraco-userscripts
+// @supportURL   https://github.com/skttl/umbraco-userscripts/issues
+// @license      MIT
 // @include      /^https?:\/\/.*\.scm\..*\.umbraco\.io\/.*$/
-    // @grant        none
-    // ==/UserScript==
+// @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/screenshots/event_log_viewer.png
+// @grant        none
+// @run-at       document-end
+// @compatible   chrome Tampermonkey
+// @compatible   firefox Tampermonkey
+// @compatible   edge Tampermonkey
+// ==/UserScript==
 
     (function() {
         'use strict';

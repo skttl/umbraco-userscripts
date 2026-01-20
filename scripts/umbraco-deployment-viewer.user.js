@@ -1,10 +1,19 @@
 // ==UserScript==
 // @name         Umbraco Cloud Deployment Viewer
-// @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  View Umbraco Cloud deployment status and history
+// @namespace    https://github.com/skttl/umbraco-userscripts
+// @version      1.0.0
+// @description  Comprehensive deployment monitoring interface for Umbraco Cloud with real-time logs and status tracking
+// @author       skttl
+// @homepage     https://github.com/skttl/umbraco-userscripts
+// @supportURL   https://github.com/skttl/umbraco-userscripts/issues
+// @license      MIT
 // @include      /^https?:\/\/.*\.scm\..*\.umbraco\.io\/.*$/
+// @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/screenshots/deployment_status.png
 // @grant        none
+// @run-at       document-end
+// @compatible   chrome Tampermonkey
+// @compatible   firefox Tampermonkey
+// @compatible   edge Tampermonkey
 // ==/UserScript==
 
 (function() {
