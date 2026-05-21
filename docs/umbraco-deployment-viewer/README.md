@@ -74,3 +74,13 @@ Provides a comprehensive deployment monitoring interface within Kudu, allowing y
 - Check browser console for errors
 - Verify API endpoints are accessible
 - Check that deployments exist in `/api/vfs/site/deployments/`
+
+## Changelog
+
+### v1.1.0
+- Added proper `@author`, `@homepage`, `@supportURL`, `@license`, `@updateURL`, `@downloadURL` metadata
+- Switched from `@include` regex to `@match` pattern
+- Updated `@description` to mention Umbraco Cloud context
+
+### v1.0.0
+- Initial release: deployment dashboard, real-time log viewer with auto-refresh, deployment details, file manifest viewer, deployment triggering, interactive history table, URL state management, browser history support

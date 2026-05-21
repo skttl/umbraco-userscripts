@@ -39,3 +39,13 @@ Adds a styled event log viewer directly inside the Kudu interface, making it eas
 - Check browser console for errors
 - Verify the `/api/vfs/LogFiles/eventlog.xml` endpoint is accessible
 - Ensure the event log file exists on the server
+
+## Changelog
+
+### v1.1.0
+- Added proper `@author`, `@homepage`, `@supportURL`, `@license`, `@updateURL`, `@downloadURL` metadata
+- Switched from `@include` regex to `@match` pattern
+- Updated `@description` to mention Umbraco Cloud context
+
+### v1.0.0
+- Initial release: navbar integration, Windows Event Log XML parsing, color-coded event levels, sorted display, URL state management, browser history support

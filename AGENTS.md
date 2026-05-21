@@ -37,7 +37,11 @@ skills-lock.json  Pinned agent skill versions
 1. Edit the relevant `scripts/*.user.js` file directly.
 2. Bump `@version` in the metadata block for any functional change.
 3. Keep each script self-contained — do not introduce external dependencies or a build pipeline.
-4. Keep `README.md` in sync: update feature lists, version numbers, and any technical details (API endpoints, URL patterns, compatibility notes) whenever the scripts change.
+4. Keep documentation in sync for **every** functional change:
+   - `README.md` (root) — update the version number and description in the scripts table.
+   - `docs/<script-name>/README.md` — update the version, feature list, usage steps, and any technical details (API endpoints, data formats, etc.).
+   - `docs/<script-name>/README.md` — append a new `### vX.Y.Z` entry under `## Changelog` describing what changed.
+   - All three updates must be done in the same commit/session as the script change — do not defer doc updates.
 5. If adding a new viewer, follow the existing pattern:
    - Add a navbar `<li>` link
    - Dispatch `viewer-change` when activating
