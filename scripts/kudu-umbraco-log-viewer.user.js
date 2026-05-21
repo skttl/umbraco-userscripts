@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kudu Umbraco Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.1.0
+// @version      1.2.0
 // @description  View Umbraco Serilog JSON log files inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
@@ -21,6 +21,7 @@
     const LOGS_BASE_PATH = '/api/vfs/site/wwwroot/umbraco/Logs/';
     const PAGE_SIZE = 100;
     const VIEWER_NAME = 'umbracolog';
+    const SAVED_SEARCHES_KEY = 'umbracolog-saved-searches';
 
     let isViewerActive = false;
     let allEntries = [];
@@ -29,6 +30,7 @@
     let sortDescending = true;
     let activeLevels = new Set(['Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal']);
     let searchText = '';
+    let queryError = null;
 
     function escapeHtml(str) {
         return String(str)
@@ -71,6 +73,212 @@
         } catch (e) {
             return null;
         }
+    }
+
+    // --- Serilog-compatible query engine ---
+    // Supports: @Level, @Message, @Exception, @mt, and any property name
+    // Operators: =, !=, like (glob * wildcard), >, >=, <, <=
+    // Logic: And / Or / Not(...)
+    // Strings: single-quoted 'value'
+    // Example: (Not(@Level='Verbose') and Not(@Level='Debug')) and @Message like '*timeout*'
+
+    function entryFieldValue(entry, fieldName) {
+        const n = fieldName.toLowerCase();
+        if (n === '@level' || n === 'level')   return entry.level;
+        if (n === '@message' || n === 'message') return entry.renderedMessage;
+        if (n === '@exception' || n === 'exception') return entry.exception || '';
+        if (n === '@mt' || n === 'messagetemplate') return entry.messageTemplate;
+        if (n === '@t' || n === 'timestamp')   return entry.timestamp;
+        // structured properties (case-insensitive lookup)
+        for (const k of Object.keys(entry.properties)) {
+            if (k.toLowerCase() === n) return String(entry.properties[k]);
+        }
+        return undefined;
+    }
+
+    function globMatch(pattern, value) {
+        // Convert glob (*) pattern to regex
+        const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+        return new RegExp('^' + escaped + '$', 'i').test(value);
+    }
+
+    // Tokeniser
+    function tokenise(expr) {
+        const tokens = [];
+        let i = 0;
+        while (i < expr.length) {
+            if (/\s/.test(expr[i])) { i++; continue; }
+            if (expr[i] === '(') { tokens.push({ type: 'LPAREN' }); i++; continue; }
+            if (expr[i] === ')') { tokens.push({ type: 'RPAREN' }); i++; continue; }
+            if (expr[i] === "'") {
+                let j = i + 1;
+                while (j < expr.length && expr[j] !== "'") j++;
+                tokens.push({ type: 'STRING', value: expr.slice(i + 1, j) });
+                i = j + 1; continue;
+            }
+            // Operators: !=, >=, <=, =, >, <
+            if (expr.slice(i, i + 2) === '!=') { tokens.push({ type: 'OP', value: '!=' }); i += 2; continue; }
+            if (expr.slice(i, i + 2) === '>=') { tokens.push({ type: 'OP', value: '>=' }); i += 2; continue; }
+            if (expr.slice(i, i + 2) === '<=') { tokens.push({ type: 'OP', value: '<=' }); i += 2; continue; }
+            if (expr[i] === '=') { tokens.push({ type: 'OP', value: '=' }); i++; continue; }
+            if (expr[i] === '>') { tokens.push({ type: 'OP', value: '>' }); i++; continue; }
+            if (expr[i] === '<') { tokens.push({ type: 'OP', value: '<' }); i++; continue; }
+            // Identifier / keyword (@Level, MachineName, and, or, not, like, …)
+            const m = expr.slice(i).match(/^[@\w]+/i);
+            if (m) { tokens.push({ type: 'IDENT', value: m[0] }); i += m[0].length; continue; }
+            // Fallback: skip unknown char
+            i++;
+        }
+        return tokens;
+    }
+
+    // Recursive-descent parser → AST
+    function parseQuery(expr) {
+        const tokens = tokenise(expr);
+        let pos = 0;
+
+        function peek() { return tokens[pos]; }
+        function consume() { return tokens[pos++]; }
+        function expect(type) {
+            const t = consume();
+            if (!t || t.type !== type) throw new Error(`Expected ${type} at position ${pos}`);
+            return t;
+        }
+
+        function parseOr() {
+            let left = parseAnd();
+            while (peek() && peek().type === 'IDENT' && peek().value.toLowerCase() === 'or') {
+                consume();
+                const right = parseAnd();
+                left = { type: 'OR', left, right };
+            }
+            return left;
+        }
+
+        function parseAnd() {
+            let left = parseUnary();
+            while (peek() && peek().type === 'IDENT' && peek().value.toLowerCase() === 'and') {
+                consume();
+                const right = parseUnary();
+                left = { type: 'AND', left, right };
+            }
+            return left;
+        }
+
+        function parseUnary() {
+            const t = peek();
+            if (t && t.type === 'IDENT' && t.value.toLowerCase() === 'not') {
+                consume();
+                expect('LPAREN');
+                const inner = parseOr();
+                expect('RPAREN');
+                return { type: 'NOT', inner };
+            }
+            return parsePrimary();
+        }
+
+        function parsePrimary() {
+            const t = peek();
+            if (t && t.type === 'LPAREN') {
+                consume();
+                const inner = parseOr();
+                expect('RPAREN');
+                return inner;
+            }
+            // field op value
+            const field = consume();
+            if (!field || field.type !== 'IDENT') throw new Error(`Expected field name, got ${field ? field.value : 'EOF'}`);
+            const op = consume();
+            if (!op || op.type !== 'OP') {
+                // Check for "like" keyword as op
+                if (op && op.type === 'IDENT' && op.value.toLowerCase() === 'like') {
+                    const val = consume();
+                    if (!val || val.type !== 'STRING') throw new Error('Expected string after like');
+                    return { type: 'CMP', field: field.value, op: 'like', value: val.value };
+                }
+                throw new Error(`Expected operator after ${field.value}`);
+            }
+            // Could be 'like' after seeing an IDENT with value 'like' — but we already handle it above.
+            // op.value is =, !=, >, <, >=, <=
+            const val = consume();
+            if (!val || val.type !== 'STRING') throw new Error('Expected string value');
+            return { type: 'CMP', field: field.value, op: op.value, value: val.value };
+        }
+
+        const ast = parseOr();
+        if (pos < tokens.length) throw new Error(`Unexpected token: ${tokens[pos].value}`);
+        return ast;
+    }
+
+    function evalAst(ast, entry) {
+        switch (ast.type) {
+            case 'AND': return evalAst(ast.left, entry) && evalAst(ast.right, entry);
+            case 'OR':  return evalAst(ast.left, entry) || evalAst(ast.right, entry);
+            case 'NOT': return !evalAst(ast.inner, entry);
+            case 'CMP': {
+                const raw = entryFieldValue(entry, ast.field);
+                const entryVal = raw === undefined ? '' : String(raw);
+                const cmpVal = ast.value;
+                switch (ast.op) {
+                    case '=':    return entryVal.toLowerCase() === cmpVal.toLowerCase();
+                    case '!=':   return entryVal.toLowerCase() !== cmpVal.toLowerCase();
+                    case 'like': return globMatch(cmpVal, entryVal);
+                    case '>':    return entryVal > cmpVal;
+                    case '>=':   return entryVal >= cmpVal;
+                    case '<':    return entryVal < cmpVal;
+                    case '<=':   return entryVal <= cmpVal;
+                    default:     return false;
+                }
+            }
+            default: return true;
+        }
+    }
+
+    // Returns a compiled filter function or null for plain-text search
+    function compileSearch(text) {
+        const t = text.trim();
+        if (!t) return null;
+        // Detect expression syntax: contains =, Not(, and/or keywords at word boundary
+        const looksLikeExpr = /[=!<>]|Not\s*\(|\band\b|\bor\b|\bnot\b|\blike\b/i.test(t);
+        if (!looksLikeExpr) return null;
+        return parseQuery(t); // throws on parse error
+    }
+
+    function entryMatchesSearch(entry, ast, lowerText) {
+        if (ast) return evalAst(ast, entry);
+        if (!lowerText) return true;
+        return entry.renderedMessage.toLowerCase().includes(lowerText) ||
+               entry.messageTemplate.toLowerCase().includes(lowerText);
+    }
+
+    // --- Saved searches (localStorage) ---
+
+    function loadSavedSearches() {
+        try {
+            return JSON.parse(localStorage.getItem(SAVED_SEARCHES_KEY) || '[]');
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveSavedSearches(list) {
+        localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(list));
+    }
+
+    function addSavedSearch(name, query) {
+        const list = loadSavedSearches();
+        const existing = list.findIndex(s => s.name === name);
+        if (existing >= 0) {
+            list[existing].query = query;
+        } else {
+            list.push({ name, query });
+        }
+        saveSavedSearches(list);
+    }
+
+    function deleteSavedSearch(name) {
+        const list = loadSavedSearches().filter(s => s.name !== name);
+        saveSavedSearches(list);
     }
 
     function levelToLabelClass(level) {
@@ -238,20 +446,46 @@
         // Search input row
         const searchRow = document.createElement('div');
         searchRow.className = 'form-inline';
-        searchRow.style.marginBottom = '8px';
+        searchRow.style.marginBottom = '4px';
 
         const searchInput = document.createElement('input');
         searchInput.id = 'umbracolog-search';
         searchInput.type = 'text';
         searchInput.className = 'form-control';
-        searchInput.placeholder = 'Search log messages...';
-        searchInput.style.width = '300px';
-        searchInput.style.marginRight = '10px';
+        searchInput.placeholder = "Search: text or @Level='Error' and @Message like '*timeout*'";
+        searchInput.style.width = '460px';
+        searchInput.style.marginRight = '6px';
+        searchInput.style.fontFamily = 'monospace';
         searchInput.oninput = () => {
             searchText = searchInput.value;
             applyFilters();
+            renderQueryError();
         };
         searchRow.appendChild(searchInput);
+
+        // Save search button
+        const saveSearchBtn = document.createElement('button');
+        saveSearchBtn.className = 'btn btn-default btn-sm';
+        saveSearchBtn.title = 'Save this search';
+        saveSearchBtn.innerHTML = '&#9733; Save';
+        saveSearchBtn.style.marginRight = '6px';
+        saveSearchBtn.onclick = () => {
+            const q = searchInput.value.trim();
+            if (!q) return;
+            const name = prompt('Name for this saved search:', q.length > 40 ? q.slice(0, 40) + '…' : q);
+            if (!name) return;
+            addSavedSearch(name, q);
+            renderSavedSearches();
+        };
+        searchRow.appendChild(saveSearchBtn);
+
+        const helpBtn = document.createElement('button');
+        helpBtn.className = 'btn btn-default btn-sm';
+        helpBtn.title = 'Query syntax help';
+        helpBtn.style.marginRight = '6px';
+        helpBtn.innerHTML = '?';
+        helpBtn.onclick = () => showQueryHelpModal();
+        searchRow.appendChild(helpBtn);
 
         const sortBtn = document.createElement('button');
         sortBtn.id = 'umbracolog-sort-btn';
@@ -264,12 +498,10 @@
         };
         searchRow.appendChild(sortBtn);
 
-        toolbar.appendChild(searchRow);
-
         // Level filter — dropdown with checkboxes
         const levelDropdownWrap = document.createElement('div');
         levelDropdownWrap.className = 'btn-group';
-        levelDropdownWrap.style.position = 'relative';
+        levelDropdownWrap.style.cssText = 'position:relative;margin-left:6px;';
 
         const levelToggleBtn = document.createElement('button');
         levelToggleBtn.id = 'umbracolog-level-toggle';
@@ -348,7 +580,21 @@
         });
 
         levelDropdownWrap.appendChild(levelPanel);
-        toolbar.appendChild(levelDropdownWrap);
+        searchRow.appendChild(levelDropdownWrap);
+
+        toolbar.appendChild(searchRow);
+
+        // Query error hint
+        const queryErrorDiv = document.createElement('div');
+        queryErrorDiv.id = 'umbracolog-query-error';
+        queryErrorDiv.style.cssText = 'display:none;color:#a94442;font-size:12px;margin-bottom:4px;font-family:monospace;';
+        toolbar.appendChild(queryErrorDiv);
+
+        // Saved searches row
+        const savedRow = document.createElement('div');
+        savedRow.id = 'umbracolog-saved-searches';
+        savedRow.style.cssText = 'margin-top:6px;';
+        toolbar.appendChild(savedRow);
 
         levelToggleBtn.onclick = (e) => {
             e.stopPropagation();
@@ -372,7 +618,7 @@
         const graphCanvas = document.createElement('canvas');
         graphCanvas.id = 'umbracolog-graph';
         graphCanvas.height = 80;
-        graphCanvas.style.cssText = 'width:100%;height:80px;display:block;cursor:crosshair;';
+        graphCanvas.style.cssText = 'width:100%;height:80px;display:block;cursor:pointer;';
         graphContainer.appendChild(graphCanvas);
 
         const graphLegend = document.createElement('div');
@@ -416,9 +662,8 @@
 
             const jsonFiles = items
                 .filter(item => item.name && item.name.endsWith('.json'))
-                .map(item => item.name)
-                .sort()
-                .reverse();
+                .map(item => ({ name: item.name, mtime: item.mtime ? new Date(item.mtime) : new Date(0) }))
+                .sort((a, b) => b.mtime - a.mtime);
 
             select.innerHTML = '';
 
@@ -427,11 +672,26 @@
                 return;
             }
 
-            jsonFiles.forEach(name => {
+            const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            let currentGroupKey = null;
+            let currentGroup = null;
+
+            jsonFiles.forEach(({ name, mtime }) => {
+                const groupKey = mtime.getTime() === 0
+                    ? 'Unknown'
+                    : `${mtime.getFullYear()} ${MONTH_NAMES[mtime.getMonth()]}`;
+
+                if (groupKey !== currentGroupKey) {
+                    currentGroup = document.createElement('optgroup');
+                    currentGroup.label = groupKey;
+                    select.appendChild(currentGroup);
+                    currentGroupKey = groupKey;
+                }
+
                 const opt = document.createElement('option');
                 opt.value = name;
                 opt.textContent = name;
-                select.appendChild(opt);
+                currentGroup.appendChild(opt);
             });
 
             loadSelectedFile();
@@ -477,6 +737,8 @@
 
             toolbar.style.display = 'block';
             currentPage = 1;
+            renderSavedSearches();
+            renderQueryError();
             applyFilters();
 
             if (skipped > 0) {
@@ -502,12 +764,22 @@
     }
 
     function applyFilters() {
-        const lowerSearch = searchText.toLowerCase();
+        let ast = null;
+        queryError = null;
+        const t = searchText.trim();
+        if (t) {
+            try {
+                ast = compileSearch(t);
+            } catch (e) {
+                queryError = e.message;
+            }
+        }
+        const lowerSearch = (!ast && !queryError) ? t.toLowerCase() : '';
 
         filteredEntries = allEntries.filter(entry => {
             if (!activeLevels.has(entry.level)) return false;
-            if (lowerSearch && !entry.renderedMessage.toLowerCase().includes(lowerSearch)) return false;
-            return true;
+            if (queryError) return false;
+            return entryMatchesSearch(entry, ast, lowerSearch);
         });
 
         filteredEntries.sort((a, b) => {
@@ -519,6 +791,173 @@
         currentPage = 1;
         renderMomentumGraph();
         renderCurrentPage();
+    }
+
+    function showQueryHelpModal() {
+        const existing = document.getElementById('umbracolog-help-modal');
+        if (existing) { existing.style.display = 'flex'; return; }
+
+        const overlay = document.createElement('div');
+        overlay.id = 'umbracolog-help-modal';
+        overlay.style.cssText = [
+            'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;',
+            'background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;'
+        ].join('');
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = [
+            'background:#fff;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,.35);',
+            'width:680px;max-width:96vw;max-height:88vh;overflow-y:auto;',
+            'font-family:inherit;font-size:13px;'
+        ].join('');
+
+        dialog.innerHTML = `
+<div style="padding:16px 20px;border-bottom:1px solid #e5e5e5;display:flex;align-items:center;justify-content:space-between;">
+  <h4 style="margin:0;font-size:15px;">Query syntax cheat sheet</h4>
+  <button id="umbracolog-help-close" style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:#777;padding:0 4px;">&times;</button>
+</div>
+<div style="padding:16px 20px;">
+
+  <p style="margin-top:0;color:#555;">Plain text is matched as a case-insensitive substring against the message. Use expressions below for structured filtering.</p>
+
+  <h5 style="margin-bottom:6px;">Fields</h5>
+  <table class="table table-condensed table-bordered" style="font-size:12px;">
+    <thead><tr><th>Field</th><th>Aliases</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>@Level</code></td><td><code>Level</code></td><td>Log level (Verbose, Debug, Information, Warning, Error, Fatal)</td></tr>
+      <tr><td><code>@Message</code></td><td><code>Message</code></td><td>Rendered log message</td></tr>
+      <tr><td><code>@Exception</code></td><td><code>Exception</code></td><td>Exception stack trace</td></tr>
+      <tr><td><code>@mt</code></td><td><code>MessageTemplate</code></td><td>Raw Serilog message template</td></tr>
+      <tr><td><code>@t</code></td><td><code>Timestamp</code></td><td>ISO 8601 timestamp string</td></tr>
+      <tr><td><em>PropertyName</em></td><td></td><td>Any structured property (e.g. <code>MachineName</code>, <code>RequestId</code>)</td></tr>
+    </tbody>
+  </table>
+
+  <h5 style="margin-bottom:6px;">Operators</h5>
+  <table class="table table-condensed table-bordered" style="font-size:12px;">
+    <thead><tr><th>Operator</th><th>Meaning</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>=</code></td><td>Case-insensitive equal</td><td><code>@Level='Error'</code></td></tr>
+      <tr><td><code>!=</code></td><td>Not equal</td><td><code>@Level!='Debug'</code></td></tr>
+      <tr><td><code>like</code></td><td>Glob match (<code>*</code> = any chars, <code>?</code> = one char)</td><td><code>@Message like '*timeout*'</code></td></tr>
+      <tr><td><code>&gt;</code> <code>&gt;=</code> <code>&lt;</code> <code>&lt;=</code></td><td>String comparison</td><td><code>@Level&gt;='Warning'</code></td></tr>
+    </tbody>
+  </table>
+
+  <h5 style="margin-bottom:6px;">Boolean logic</h5>
+  <table class="table table-condensed table-bordered" style="font-size:12px;">
+    <thead><tr><th>Keyword</th><th>Meaning</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>and</code></td><td>Both conditions must be true</td><td><code>@Level='Error' and MachineName='web01'</code></td></tr>
+      <tr><td><code>or</code></td><td>Either condition must be true</td><td><code>@Level='Error' or @Level='Fatal'</code></td></tr>
+      <tr><td><code>Not(...)</code></td><td>Negate a condition</td><td><code>Not(@Level='Verbose')</code></td></tr>
+      <tr><td><code>( )</code></td><td>Grouping</td><td><code>(@Level='Error' or @Level='Fatal') and @Message like '*sql*'</code></td></tr>
+    </tbody>
+  </table>
+
+  <h5 style="margin-bottom:6px;">Examples</h5>
+  <table class="table table-condensed table-bordered" style="font-size:12px;">
+    <tbody>
+      <tr><td style="width:56%"><code>Not(@Level='Verbose') and Not(@Level='Debug')</code></td><td>Hide noise levels</td></tr>
+      <tr><td><code>@Level='Error' or @Level='Fatal'</code></td><td>Errors and fatals only</td></tr>
+      <tr><td><code>@Message like '*Umbraco.Cms*'</code></td><td>Messages containing a namespace</td></tr>
+      <tr><td><code>@Exception like '*SqlException*'</code></td><td>Only SQL exceptions</td></tr>
+      <tr><td><code>MachineName='web-01' and @Level!='Verbose'</code></td><td>One machine, no verbose</td></tr>
+      <tr><td><code>(@Level='Warning' or @Level='Error') and @Message like '*login*'</code></td><td>Login-related warnings/errors</td></tr>
+    </tbody>
+  </table>
+
+  <p style="color:#888;font-size:11px;margin-bottom:0;">String values must be single-quoted. Field names and keywords are case-insensitive.</p>
+</div>`;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const close = () => { overlay.style.display = 'none'; };
+        document.getElementById('umbracolog-help-close').onclick = close;
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); }
+        });
+
+        // Wire up example rows: click to insert the query
+        dialog.querySelectorAll('table:last-of-type tbody tr').forEach(tr => {
+            const code = tr.querySelector('code');
+            if (!code) return;
+            tr.style.cursor = 'pointer';
+            tr.title = 'Click to use this query';
+            tr.onmouseenter = () => tr.style.background = '#f5f5f5';
+            tr.onmouseleave = () => tr.style.background = '';
+            tr.onclick = () => {
+                const input = document.getElementById('umbracolog-search');
+                if (input) {
+                    input.value = code.textContent;
+                    searchText = code.textContent;
+                    applyFilters();
+                    renderQueryError();
+                }
+                close();
+            };
+        });
+    }
+
+    function renderQueryError() {
+        const el = document.getElementById('umbracolog-query-error');
+        if (!el) return;
+        if (queryError) {
+            el.textContent = '⚠ ' + queryError;
+            el.style.display = 'block';
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    function renderSavedSearches() {
+        const container = document.getElementById('umbracolog-saved-searches');
+        if (!container) return;
+        const searches = loadSavedSearches();
+        container.innerHTML = '';
+        if (searches.length === 0) return;
+
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:12px;color:#777;margin-right:6px;';
+        label.textContent = 'Saved:';
+        container.appendChild(label);
+
+        searches.forEach(s => {
+            const wrap = document.createElement('span');
+            wrap.style.cssText = 'display:inline-block;margin-right:4px;margin-bottom:2px;';
+
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-xs btn-default';
+            btn.style.fontFamily = 'monospace';
+            btn.textContent = s.name;
+            btn.title = s.query;
+            btn.onclick = () => {
+                const input = document.getElementById('umbracolog-search');
+                if (input) {
+                    input.value = s.query;
+                    searchText = s.query;
+                    applyFilters();
+                    renderQueryError();
+                }
+            };
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-xs btn-danger';
+            delBtn.style.cssText = 'margin-left:1px;padding:1px 4px;';
+            delBtn.innerHTML = '&times;';
+            delBtn.title = 'Delete saved search';
+            delBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteSavedSearch(s.name);
+                renderSavedSearches();
+            };
+
+            wrap.appendChild(btn);
+            wrap.appendChild(delBtn);
+            container.appendChild(wrap);
+        });
     }
 
     function renderMomentumGraph() {
@@ -634,6 +1073,131 @@
         const fromStr = new Date(minT).toLocaleString();
         const toStr   = new Date(maxT).toLocaleString();
         legend.textContent = `${fromStr} → ${toStr}  ·  ${NUM_BUCKETS} buckets × ${bucketLabel}  ·  peak ${maxCount} msgs`;
+
+        // Build bucket→page index for filtered entries
+        // bucketFirstPage[i] = 1-based page number of the first filteredEntry in bucket i, or 0 if none
+        const bucketFirstPage = new Array(NUM_BUCKETS).fill(0);
+        for (let j = 0; j < filteredEntries.length; j++) {
+            const t = new Date(filteredEntries[j].timestamp).getTime();
+            if (isNaN(t)) continue;
+            const idx = Math.min(NUM_BUCKETS - 1, Math.floor((t - minT) / bucketSize));
+            if (!bucketFirstPage[idx]) {
+                bucketFirstPage[idx] = Math.floor(j / PAGE_SIZE) + 1;
+            }
+        }
+
+        // Click: navigate to the page of the first filtered entry in that bucket
+        canvas.onclick = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const bucketIdx = Math.min(NUM_BUCKETS - 1, Math.floor((x / rect.width) * NUM_BUCKETS));
+            const page = bucketFirstPage[bucketIdx];
+            if (page) {
+                currentPage = page;
+                renderCurrentPage();
+                document.getElementById('umbracolog-content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        };
+
+        // Floating tooltip
+        let tooltip = document.getElementById('umbracolog-graph-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'umbracolog-graph-tooltip';
+            tooltip.style.cssText = [
+                'position:fixed;z-index:9000;pointer-events:none;display:none;',
+                'background:rgba(30,30,30,0.88);color:#fff;border-radius:4px;',
+                'padding:5px 9px;font-size:12px;line-height:1.5;white-space:nowrap;',
+                'box-shadow:0 2px 6px rgba(0,0,0,.3);'
+            ].join('');
+            document.body.appendChild(tooltip);
+        }
+
+        canvas.onmousemove = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const bucketIdx = Math.min(NUM_BUCKETS - 1, Math.floor((x / rect.width) * NUM_BUCKETS));
+            canvas.style.cursor = bucketFirstPage[bucketIdx] ? 'pointer' : 'default';
+
+            // Redraw with hover highlight
+            ctx.clearRect(0, 0, W, H);
+            ctx.strokeStyle = '#e8e8e8';
+            ctx.lineWidth = 1;
+            for (let g = 0; g <= 4; g++) {
+                const gy = H - (g / 4) * H;
+                ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+            }
+            for (let i = 0; i < NUM_BUCKETS; i++) {
+                let yBase = H;
+                if (i === bucketIdx) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+                    ctx.fillRect(i * barW, 0, barW, H);
+                }
+                for (const level of levelStack) {
+                    const cnt = counts[i][level] || 0;
+                    if (!cnt) continue;
+                    const barH = (cnt / maxCount) * H;
+                    yBase -= barH;
+                    ctx.fillStyle = i === bucketIdx
+                        ? shadeColor(levelColors[level] || '#999', -20)
+                        : (levelColors[level] || '#999');
+                    ctx.fillRect(i * barW + 0.5, yBase, Math.max(1, barW - 1), barH);
+                }
+            }
+            if (filteredEntries.length !== allEntries.length) {
+                const fCounts2 = new Array(NUM_BUCKETS).fill(0);
+                for (const entry of filteredEntries) {
+                    const ft = new Date(entry.timestamp).getTime();
+                    if (isNaN(ft)) continue;
+                    const fidx = Math.min(NUM_BUCKETS - 1, Math.floor((ft - minT) / bucketSize));
+                    fCounts2[fidx]++;
+                }
+                ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([3, 2]);
+                ctx.beginPath();
+                for (let i = 0; i < NUM_BUCKETS; i++) {
+                    const fx = i * barW + barW / 2;
+                    const fy = H - (fCounts2[i] / maxCount) * H;
+                    i === 0 ? ctx.moveTo(fx, fy) : ctx.lineTo(fx, fy);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            // Floating tooltip
+            const bucketTotal = totals[bucketIdx];
+            const bucketStart = new Date(minT + bucketIdx * bucketSize);
+            const bucketEnd   = new Date(minT + (bucketIdx + 1) * bucketSize);
+            const timeOpts = { hour: '2-digit', minute: '2-digit' };
+            const tipTime = `${bucketStart.toLocaleTimeString([], timeOpts)} – ${bucketEnd.toLocaleTimeString([], timeOpts)}`;
+            const tipCount = `${bucketTotal} msg${bucketTotal !== 1 ? 's' : ''}`;
+            const tipPage = bucketFirstPage[bucketIdx] ? `<br><span style="font-size:11px;opacity:.8">click → page ${bucketFirstPage[bucketIdx]}</span>` : '';
+            tooltip.innerHTML = `<strong>${tipTime}</strong>  ${tipCount}${tipPage}`;
+            const ttX = e.clientX + 14;
+            const ttY = e.clientY - 36;
+            tooltip.style.left = ttX + 'px';
+            tooltip.style.top  = ttY + 'px';
+            tooltip.style.display = 'block';
+            // Keep legend as the overall range summary
+            legend.textContent = `${fromStr} → ${toStr}  ·  ${NUM_BUCKETS} buckets × ${bucketLabel}  ·  peak ${maxCount} msgs`;
+        };
+
+        canvas.onmouseleave = () => {
+            canvas.style.cursor = 'pointer';
+            if (tooltip) tooltip.style.display = 'none';
+            legend.textContent = `${fromStr} → ${toStr}  ·  ${NUM_BUCKETS} buckets × ${bucketLabel}  ·  peak ${maxCount} msgs`;
+            // Restore original drawing
+            renderMomentumGraph();
+        };
+
+    }
+
+    function shadeColor(color, amount) {
+        const num = parseInt(color.replace('#', ''), 16);
+        const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+        const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
+        const b = Math.min(255, Math.max(0, (num & 0xff) + amount));
+        return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
     }
 
     function renderCurrentPage() {

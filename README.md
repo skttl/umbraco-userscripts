@@ -8,7 +8,7 @@ A collection of userscripts that enhance the Kudu interface for Umbraco Cloud en
 |--------|---------|-------------|---------|
 | [Kudu Event Log Viewer](docs/kudu-eventlog-viewer/README.md) | v1.1.0 | Browse Windows Event Logs inside Kudu | [![Install](https://img.shields.io/badge/Install-Userscript-blue?logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-eventlog-viewer.user.js) |
 | [Umbraco Cloud Deployment Viewer](docs/umbraco-deployment-viewer/README.md) | v1.1.0 | Monitor deployments, view live logs, and trigger new deployments | [![Install](https://img.shields.io/badge/Install-Userscript-blue?logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/umbraco-deployment-viewer.user.js) |
-| [Kudu Umbraco Log Viewer](docs/kudu-umbraco-log-viewer/README.md) | v1.1.0 | Browse Serilog JSON log files with filtering, momentum graph, and pagination | [![Install](https://img.shields.io/badge/Install-Userscript-blue?logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-umbraco-log-viewer.user.js) |
+| [Kudu Umbraco Log Viewer](docs/kudu-umbraco-log-viewer/README.md) | v1.2.0 | Browse Serilog JSON log files with expression search, saved searches, momentum graph, and pagination | [![Install](https://img.shields.io/badge/Install-Userscript-blue?logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-umbraco-log-viewer.user.js) |
 
 ## Screenshots
 
