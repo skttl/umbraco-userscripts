@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kudu Umbraco Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.0.0
+// @version      1.1.0
 // @description  View Umbraco Serilog JSON log files inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
@@ -266,15 +266,63 @@
 
         toolbar.appendChild(searchRow);
 
-        // Level filter row
-        const levelRow = document.createElement('div');
-        levelRow.id = 'umbracolog-level-filters';
+        // Level filter — dropdown with checkboxes
+        const levelDropdownWrap = document.createElement('div');
+        levelDropdownWrap.className = 'btn-group';
+        levelDropdownWrap.style.position = 'relative';
+
+        const levelToggleBtn = document.createElement('button');
+        levelToggleBtn.id = 'umbracolog-level-toggle';
+        levelToggleBtn.className = 'btn btn-default btn-sm dropdown-toggle';
+        levelToggleBtn.type = 'button';
+        levelToggleBtn.innerHTML = 'Levels <span class="caret"></span>';
+        levelDropdownWrap.appendChild(levelToggleBtn);
+
+        const levelPanel = document.createElement('div');
+        levelPanel.id = 'umbracolog-level-panel';
+        levelPanel.style.cssText = 'display:none;position:absolute;top:100%;left:0;z-index:1000;background:#fff;border:1px solid #ccc;border-radius:4px;padding:8px 12px;min-width:160px;box-shadow:0 3px 8px rgba(0,0,0,.15);';
+
+        // Select all / none row
+        const allNoneRow = document.createElement('div');
+        allNoneRow.style.cssText = 'margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #eee;display:flex;gap:6px;';
+
+        const selectAllBtn = document.createElement('a');
+        selectAllBtn.href = '#';
+        selectAllBtn.textContent = 'All';
+        selectAllBtn.style.fontSize = '12px';
+        selectAllBtn.onclick = (e) => {
+            e.preventDefault();
+            levelPanel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                cb.checked = true;
+                activeLevels.add(cb.value);
+            });
+            updateLevelToggleLabel();
+            applyFilters();
+        };
+
+        const selectNoneBtn = document.createElement('a');
+        selectNoneBtn.href = '#';
+        selectNoneBtn.textContent = 'None';
+        selectNoneBtn.style.fontSize = '12px';
+        selectNoneBtn.onclick = (e) => {
+            e.preventDefault();
+            levelPanel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                cb.checked = false;
+                activeLevels.delete(cb.value);
+            });
+            updateLevelToggleLabel();
+            applyFilters();
+        };
+
+        allNoneRow.appendChild(selectAllBtn);
+        allNoneRow.appendChild(document.createTextNode('·'));
+        allNoneRow.appendChild(selectNoneBtn);
+        levelPanel.appendChild(allNoneRow);
 
         const levels = ['Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal'];
         levels.forEach(level => {
             const lbl = document.createElement('label');
-            lbl.className = 'checkbox-inline';
-            lbl.style.marginRight = '12px';
+            lbl.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:4px;font-weight:normal;';
 
             const cb = document.createElement('input');
             cb.type = 'checkbox';
@@ -286,23 +334,53 @@
                 } else {
                     activeLevels.delete(level);
                 }
+                updateLevelToggleLabel();
                 applyFilters();
             };
 
             const badge = document.createElement('span');
             badge.className = 'label ' + levelToLabelClass(level);
             badge.textContent = level;
-            badge.style.marginLeft = '4px';
 
             lbl.appendChild(cb);
-            lbl.appendChild(document.createTextNode(' '));
             lbl.appendChild(badge);
-            levelRow.appendChild(lbl);
+            levelPanel.appendChild(lbl);
         });
 
-        toolbar.appendChild(levelRow);
+        levelDropdownWrap.appendChild(levelPanel);
+        toolbar.appendChild(levelDropdownWrap);
+
+        levelToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            const open = levelPanel.style.display !== 'none';
+            levelPanel.style.display = open ? 'none' : 'block';
+        };
+
+        document.addEventListener('click', () => {
+            levelPanel.style.display = 'none';
+        }, true);
+
+        levelPanel.addEventListener('click', (e) => e.stopPropagation());
 
         panel.appendChild(toolbar);
+
+        // Momentum graph
+        const graphContainer = document.createElement('div');
+        graphContainer.id = 'umbracolog-graph-container';
+        graphContainer.style.cssText = 'display:none;margin-bottom:16px;';
+
+        const graphCanvas = document.createElement('canvas');
+        graphCanvas.id = 'umbracolog-graph';
+        graphCanvas.height = 80;
+        graphCanvas.style.cssText = 'width:100%;height:80px;display:block;cursor:crosshair;';
+        graphContainer.appendChild(graphCanvas);
+
+        const graphLegend = document.createElement('div');
+        graphLegend.id = 'umbracolog-graph-legend';
+        graphLegend.style.cssText = 'font-size:11px;color:#999;text-align:right;margin-top:2px;';
+        graphContainer.appendChild(graphLegend);
+
+        panel.appendChild(graphContainer);
 
         // Status bar
         const statusBar = document.createElement('div');
@@ -411,6 +489,18 @@
 
     // --- Filtering, sorting, pagination ---
 
+    function updateLevelToggleLabel() {
+        const btn = document.getElementById('umbracolog-level-toggle');
+        if (!btn) return;
+        const total = 6;
+        const active = activeLevels.size;
+        const label = active === total ? 'All levels' :
+                       active === 0    ? 'No levels' :
+                       active === 1    ? [...activeLevels][0] :
+                       `${active} levels`;
+        btn.innerHTML = label + ' <span class="caret"></span>';
+    }
+
     function applyFilters() {
         const lowerSearch = searchText.toLowerCase();
 
@@ -427,7 +517,123 @@
         });
 
         currentPage = 1;
+        renderMomentumGraph();
         renderCurrentPage();
+    }
+
+    function renderMomentumGraph() {
+        const container = document.getElementById('umbracolog-graph-container');
+        const canvas = document.getElementById('umbracolog-graph');
+        const legend = document.getElementById('umbracolog-graph-legend');
+        if (!container || !canvas || !legend) return;
+
+        if (allEntries.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const timestamps = allEntries.map(e => new Date(e.timestamp).getTime()).filter(t => !isNaN(t));
+        if (timestamps.length === 0) { container.style.display = 'none'; return; }
+
+        const minT = Math.min(...timestamps);
+        const maxT = Math.max(...timestamps);
+        const span = maxT - minT || 1;
+
+        const NUM_BUCKETS = 60;
+        const bucketSize = span / NUM_BUCKETS;
+
+        const levelColors = {
+            Fatal:       '#d9534f',
+            Error:       '#e8735a',
+            Warning:     '#f0ad4e',
+            Information: '#5bc0de',
+            Debug:       '#aaa',
+            Verbose:     '#ccc'
+        };
+        const levelStack = ['Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal'];
+
+        // counts[bucket][level]
+        const counts = Array.from({ length: NUM_BUCKETS }, () => ({}));
+        for (const entry of allEntries) {
+            const t = new Date(entry.timestamp).getTime();
+            if (isNaN(t)) continue;
+            const idx = Math.min(NUM_BUCKETS - 1, Math.floor((t - minT) / bucketSize));
+            counts[idx][entry.level] = (counts[idx][entry.level] || 0) + 1;
+        }
+
+        const totals = counts.map(b => levelStack.reduce((s, l) => s + (b[l] || 0), 0));
+        const maxCount = Math.max(...totals, 1);
+
+        // Scale canvas to physical pixels
+        const dpr = window.devicePixelRatio || 1;
+        const displayW = canvas.parentElement.clientWidth || 800;
+        canvas.width  = displayW * dpr;
+        canvas.height = 80 * dpr;
+        canvas.style.width  = displayW + 'px';
+        canvas.style.height = '80px';
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        const W = displayW;
+        const H = 80;
+        const barW = W / NUM_BUCKETS;
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Draw faint horizontal gridlines
+        ctx.strokeStyle = '#e8e8e8';
+        ctx.lineWidth = 1;
+        for (let g = 0; g <= 4; g++) {
+            const y = H - (g / 4) * H;
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        }
+
+        // Draw stacked bars
+        for (let i = 0; i < NUM_BUCKETS; i++) {
+            let yBase = H;
+            for (const level of levelStack) {
+                const cnt = counts[i][level] || 0;
+                if (!cnt) continue;
+                const barH = (cnt / maxCount) * H;
+                yBase -= barH;
+                ctx.fillStyle = levelColors[level] || '#999';
+                ctx.fillRect(i * barW + 0.5, yBase, Math.max(1, barW - 1), barH);
+            }
+        }
+
+        // Highlight filtered entries in a thin overlay line
+        if (filteredEntries.length !== allEntries.length) {
+            const fCounts = new Array(NUM_BUCKETS).fill(0);
+            for (const entry of filteredEntries) {
+                const t = new Date(entry.timestamp).getTime();
+                if (isNaN(t)) continue;
+                const idx = Math.min(NUM_BUCKETS - 1, Math.floor((t - minT) / bucketSize));
+                fCounts[idx]++;
+            }
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 2]);
+            ctx.beginPath();
+            for (let i = 0; i < NUM_BUCKETS; i++) {
+                const x = i * barW + barW / 2;
+                const y = H - (fCounts[i] / maxCount) * H;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Legend
+        const bucketMinutes = Math.round(bucketSize / 60000);
+        const bucketLabel = bucketMinutes >= 60
+            ? `${Math.round(bucketMinutes / 60)}h`
+            : bucketMinutes >= 1 ? `${bucketMinutes}m` : `${Math.round(bucketSize / 1000)}s`;
+        const fromStr = new Date(minT).toLocaleString();
+        const toStr   = new Date(maxT).toLocaleString();
+        legend.textContent = `${fromStr} → ${toStr}  ·  ${NUM_BUCKETS} buckets × ${bucketLabel}  ·  peak ${maxCount} msgs`;
     }
 
     function renderCurrentPage() {

@@ -12,7 +12,7 @@ A collection of Tampermonkey userscripts that enhance the Kudu interface for Umb
 
 ```
 scripts/          Userscript source files (*.user.js)
-screenshots/      PNG screenshots referenced by README.md
+docs/             Per-script documentation with screenshots co-located
 .agents/          Agent-specific assets (empty by default)
 skills-lock.json  Pinned agent skill versions
 ```
@@ -68,4 +68,4 @@ Keep edits minimal and factual — reflect reality, don't prescribe aspirations.
 
 - Do not introduce a bundler, transpiler, or `package.json`.
 - Do not add external CDN dependencies to the scripts.
-- Do not modify `screenshots/` unless replacing or adding images that are directly referenced in `README.md`.
+- When adding or updating screenshots for a script, place them in the corresponding `docs/<script-name>/` subdirectory.

@@ -10,7 +10,7 @@
 // @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-eventlog-viewer.user.js
 // @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-eventlog-viewer.user.js
 // @match        https://*.scm.*.umbraco.io/*
-// @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/screenshots/event_log_viewer.png
+// @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/docs/kudu-eventlog-viewer/event_log_viewer.png
 // @grant        none
 // @run-at       document-end
 // @compatible   chrome Tampermonkey

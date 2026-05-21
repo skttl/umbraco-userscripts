@@ -10,7 +10,7 @@
 // @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/umbraco-deployment-viewer.user.js
 // @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/umbraco-deployment-viewer.user.js
 // @match        https://*.scm.*.umbraco.io/*
-// @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/screenshots/deployment_status.png
+// @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/docs/umbraco-deployment-viewer/deployment_status.png
 // @grant        none
 // @run-at       document-end
 // @compatible   chrome Tampermonkey
