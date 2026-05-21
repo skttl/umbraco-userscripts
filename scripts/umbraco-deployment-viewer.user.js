@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Umbraco Cloud Deployment Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.0.0
+// @version      1.1.0
 // @description  Comprehensive deployment monitoring interface for Umbraco Cloud with real-time logs and status tracking
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
 // @supportURL   https://github.com/skttl/umbraco-userscripts/issues
 // @license      MIT
-// @include      /^https?:\/\/.*\.scm\..*\.umbraco\.io\/.*$/
+// @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/umbraco-deployment-viewer.user.js
+// @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/umbraco-deployment-viewer.user.js
+// @match        https://*.scm.*.umbraco.io/*
 // @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/screenshots/deployment_status.png
 // @grant        none
 // @run-at       document-end
@@ -18,6 +20,14 @@
 
 (function() {
     'use strict';
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
 
     let isViewerActive = false;
     let logRefreshInterval = null;
@@ -146,7 +156,7 @@
         triggerBtn.className = 'btn btn-success';
         triggerBtn.textContent = 'Trigger New Deployment';
         triggerBtn.style.marginLeft = '10px';
-        triggerBtn.onclick = triggerNewDeployment;
+        triggerBtn.onclick = () => triggerNewDeployment(triggerBtn);
         btnGroup.appendChild(triggerBtn);
 
         panel.appendChild(btnGroup);
@@ -169,17 +179,6 @@
         };
         const info = statusMap[status] || { class: 'default' };
         return `<span class="label label-${info.class}">${status}</span>`;
-    }
-
-    function getStatusText(numericStatus) {
-        const statusMap = {
-            0: 'Pending',
-            1: 'Building',
-            2: 'Deploying',
-            3: 'Failed',
-            4: 'Success'
-        };
-        return statusMap[numericStatus] || 'Unknown';
     }
 
     async function fetchDeploymentStatus(id) {
@@ -205,6 +204,7 @@
                 projectType: xml.querySelector('project_type')?.textContent || ''
             };
         } catch (err) {
+            console.error('fetchDeploymentStatus failed:', err);
             return null;
         }
     }
@@ -249,25 +249,25 @@
             <div class="panel-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Status:</strong> ${getStatusBadge(deployment.status)}</p>
-                        <p><strong>ID:</strong> <code>${deployment.id}</code></p>
-                        <p><strong>Author:</strong> ${deployment.author} (${deployment.authorEmail})</p>
-                        <p><strong>Message:</strong> ${deployment.message}</p>
-                        <p><strong>Complete:</strong> ${deployment.complete}</p>
-                        <p id="modal-files-count-${deployment.id}"><strong>Files:</strong> <span style="color: #999;">Loading...</span></p>
+                        <p><strong>Status:</strong> ${getStatusBadge(escapeHtml(deployment.status))}</p>
+                        <p><strong>ID:</strong> <code>${escapeHtml(deployment.id)}</code></p>
+                        <p><strong>Author:</strong> ${escapeHtml(deployment.author)} (${escapeHtml(deployment.authorEmail)})</p>
+                        <p><strong>Message:</strong> ${escapeHtml(deployment.message)}</p>
+                        <p><strong>Complete:</strong> ${escapeHtml(deployment.complete)}</p>
+                        <p id="modal-files-count-${escapeHtml(deployment.id)}"><strong>Files:</strong> <span style="color: #999;">Loading...</span></p>
                     </div>
                     <div class="col-md-6">
                         <p><strong>Received:</strong> ${deployment.receivedTime ? new Date(deployment.receivedTime).toLocaleString() : 'N/A'}</p>
                         <p><strong>Started:</strong> ${deployment.startTime ? new Date(deployment.startTime).toLocaleString() : 'N/A'}</p>
                         <p><strong>Completed:</strong> ${deployment.endTime ? new Date(deployment.endTime).toLocaleString() : 'N/A'}</p>
-                        <p><strong>Duration:</strong> ${duration}</p>
-                        <p><strong>Project Type:</strong> ${deployment.projectType}</p>
-                        <p><strong>Deployer:</strong> ${deployment.deployer}</p>
+                        <p><strong>Duration:</strong> ${escapeHtml(duration)}</p>
+                        <p><strong>Project Type:</strong> ${escapeHtml(deployment.projectType)}</p>
+                        <p><strong>Deployer:</strong> ${escapeHtml(deployment.deployer)}</p>
                     </div>
                 </div>
                 <hr>
                 <h4>Deployment Log</h4>
-                <div id="modal-log-${deployment.id}" style="max-height: 300px; overflow-y: auto; background-color: #f5f5f5; padding: 10px; font-family: Consolas, Monaco, monospace; font-size: 12px; border: 1px solid #ddd;">
+                <div id="modal-log-${escapeHtml(deployment.id)}" style="max-height: 300px; overflow-y: auto; background-color: #f5f5f5; padding: 10px; font-family: Consolas, Monaco, monospace; font-size: 12px; border: 1px solid #ddd;">
                     <div style="color: #999;">Loading log...</div>
                 </div>
             </div>
@@ -294,47 +294,7 @@
             const logContainer = document.getElementById(`modal-log-${deployment.id}`);
             if (logContainer && logText) {
                 logContainer.innerHTML = '';
-                const lines = logText.split('\n').filter(line => line.trim());
-                
-                lines.forEach(line => {
-                    const parsed = parseLogLine(line);
-                    if (!parsed) return;
-
-                    const logLine = document.createElement('div');
-                    logLine.style.padding = '2px 0';
-                    logLine.style.borderBottom = '1px solid #e0e0e0';
-                    
-                    if (parsed.isIndented) {
-                        logLine.style.paddingLeft = '40px';
-                        logLine.style.backgroundColor = '#fafafa';
-                    }
-
-                    const time = new Date(parsed.timestamp);
-                    const timeStr = time.toLocaleTimeString();
-
-                    const timeSpan = document.createElement('span');
-                    timeSpan.style.color = '#999';
-                    timeSpan.style.marginRight = '10px';
-                    timeSpan.textContent = timeStr;
-
-                    const messageSpan = document.createElement('span');
-                    messageSpan.textContent = parsed.message;
-                    
-                    if (parsed.message.toLowerCase().includes('error')) {
-                        messageSpan.style.color = '#d9534f';
-                        messageSpan.style.fontWeight = 'bold';
-                    } else if (parsed.message.toLowerCase().includes('warning')) {
-                        messageSpan.style.color = '#f0ad4e';
-                    } else if (parsed.message.toLowerCase().includes('success')) {
-                        messageSpan.style.color = '#5cb85c';
-                        messageSpan.style.fontWeight = 'bold';
-                    }
-
-                    logLine.appendChild(timeSpan);
-                    logLine.appendChild(messageSpan);
-                    logContainer.appendChild(logLine);
-                });
-
+                renderLogLines(logText.split('\n').filter(line => line.trim()), logContainer);
                 logContainer.scrollTop = logContainer.scrollHeight;
             } else if (logContainer) {
                 logContainer.innerHTML = '<div style="color: #999;">No log available</div>';
@@ -360,6 +320,7 @@
 
         const panel = document.createElement('div');
         const panelClass = statusData.status === 'Success' ? 'success' : statusData.status === 'Failed' ? 'danger' : 'info';
+        panel.id = 'latest-deployment-panel';
         panel.className = `panel panel-${panelClass}`;
         panel.style.marginBottom = '20px';
 
@@ -384,20 +345,20 @@
             <div class="panel-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Status:</strong> ${getStatusBadge(statusData.status)}</p>
-                        <p><strong>ID:</strong> <code>${statusData.id}</code></p>
-                        <p><strong>Author:</strong> ${statusData.author} (${statusData.authorEmail})</p>
-                        <p><strong>Message:</strong> ${statusData.message}</p>
-                        <p><strong>Complete:</strong> ${statusData.complete}</p>
-                        <p id="files-count-${statusData.id}"><strong>Files:</strong> <span style="color: #999;">Loading...</span></p>
+                        <p><strong>Status:</strong> ${getStatusBadge(escapeHtml(statusData.status))}</p>
+                        <p><strong>ID:</strong> <code>${escapeHtml(statusData.id)}</code></p>
+                        <p><strong>Author:</strong> ${escapeHtml(statusData.author)} (${escapeHtml(statusData.authorEmail)})</p>
+                        <p><strong>Message:</strong> ${escapeHtml(statusData.message)}</p>
+                        <p><strong>Complete:</strong> ${escapeHtml(statusData.complete)}</p>
+                        <p id="files-count-${escapeHtml(statusData.id)}"><strong>Files:</strong> <span style="color: #999;">Loading...</span></p>
                     </div>
                     <div class="col-md-6">
                         <p><strong>Received:</strong> ${statusData.receivedTime ? new Date(statusData.receivedTime).toLocaleString() : 'N/A'}</p>
                         <p><strong>Started:</strong> ${statusData.startTime ? new Date(statusData.startTime).toLocaleString() : 'N/A'}</p>
                         <p><strong>Completed:</strong> ${completedTime}</p>
                         <p><strong>Duration:</strong> ${duration}</p>
-                        <p><strong>Project Type:</strong> ${statusData.projectType}</p>
-                        <p><strong>Deployer:</strong> ${statusData.deployer}</p>
+                        <p><strong>Project Type:</strong> ${escapeHtml(statusData.projectType)}</p>
+                        <p><strong>Deployer:</strong> ${escapeHtml(statusData.deployer)}</p>
                     </div>
                 </div>
             </div>
@@ -594,7 +555,7 @@
         if (parts.length < 4) return null;
         
         const timestamp = parts[0];
-        const message = parts.slice(1, -2).join(',');
+        const message = parts.slice(2, -1).join(',');
         const level = parts[parts.length - 1];
         
         return {
@@ -603,6 +564,45 @@
             level,
             isIndented
         };
+    }
+
+    function renderLogLines(lines, container) {
+        lines.forEach(line => {
+            const parsed = parseLogLine(line);
+            if (!parsed) return;
+
+            const logLine = document.createElement('div');
+            logLine.style.padding = '2px 0';
+            logLine.style.borderBottom = '1px solid #e0e0e0';
+
+            if (parsed.isIndented) {
+                logLine.style.paddingLeft = '40px';
+                logLine.style.backgroundColor = '#fafafa';
+            }
+
+            const timeSpan = document.createElement('span');
+            timeSpan.style.color = '#999';
+            timeSpan.style.marginRight = '10px';
+            timeSpan.textContent = new Date(parsed.timestamp).toLocaleTimeString();
+
+            const messageSpan = document.createElement('span');
+            messageSpan.textContent = parsed.message;
+
+            const msg = parsed.message.toLowerCase();
+            if (msg.includes('error')) {
+                messageSpan.style.color = '#d9534f';
+                messageSpan.style.fontWeight = 'bold';
+            } else if (msg.includes('warning')) {
+                messageSpan.style.color = '#f0ad4e';
+            } else if (msg.includes('success')) {
+                messageSpan.style.color = '#5cb85c';
+                messageSpan.style.fontWeight = 'bold';
+            }
+
+            logLine.appendChild(timeSpan);
+            logLine.appendChild(messageSpan);
+            container.appendChild(logLine);
+        });
     }
 
     function renderDeploymentLog(logText, deploymentId) {
@@ -636,84 +636,38 @@
         body.style.fontFamily = 'Consolas, Monaco, monospace';
         body.style.fontSize = '12px';
 
-        const lines = logText.split('\n').filter(line => line.trim());
-        
-        lines.forEach(line => {
-            const parsed = parseLogLine(line);
-            if (!parsed) return;
-
-            const logLine = document.createElement('div');
-            logLine.style.padding = '2px 0';
-            logLine.style.borderBottom = '1px solid #e0e0e0';
-            
-            if (parsed.isIndented) {
-                logLine.style.paddingLeft = '40px';
-                logLine.style.backgroundColor = '#fafafa';
-            }
-
-            const time = new Date(parsed.timestamp);
-            const timeStr = time.toLocaleTimeString();
-
-            const timeSpan = document.createElement('span');
-            timeSpan.style.color = '#999';
-            timeSpan.style.marginRight = '10px';
-            timeSpan.textContent = timeStr;
-
-            const messageSpan = document.createElement('span');
-            messageSpan.textContent = parsed.message;
-            
-            if (parsed.message.toLowerCase().includes('error')) {
-                messageSpan.style.color = '#d9534f';
-                messageSpan.style.fontWeight = 'bold';
-            } else if (parsed.message.toLowerCase().includes('warning')) {
-                messageSpan.style.color = '#f0ad4e';
-            } else if (parsed.message.toLowerCase().includes('success')) {
-                messageSpan.style.color = '#5cb85c';
-                messageSpan.style.fontWeight = 'bold';
-            }
-
-            logLine.appendChild(timeSpan);
-            logLine.appendChild(messageSpan);
-            body.appendChild(logLine);
-        });
+        renderLogLines(logText.split('\n').filter(line => line.trim()), body);
 
         panel.appendChild(body);
 
         currentDeploymentId = deploymentId;
 
-        setTimeout(() => {
-            const toggleBtn = document.getElementById('toggle-log-btn');
-            const autoRefreshBtn = document.getElementById('auto-refresh-log-btn');
-            const logBody = document.getElementById('log-panel-body');
-            
-            if (toggleBtn && logBody) {
-                toggleBtn.onclick = () => {
-                    if (logBody.style.display === 'none') {
-                        logBody.style.display = 'block';
-                        toggleBtn.textContent = 'Collapse';
-                    } else {
-                        logBody.style.display = 'none';
-                        toggleBtn.textContent = 'Expand';
-                    }
-                };
-                logBody.scrollTop = logBody.scrollHeight;
-            }
+        const toggleBtn = header.querySelector('#toggle-log-btn');
+        const autoRefreshBtn = header.querySelector('#auto-refresh-log-btn');
 
-            if (autoRefreshBtn) {
-                autoRefreshBtn.onclick = () => {
-                    if (logRefreshInterval) {
-                        stopLogRefresh();
-                    } else {
-                        startLogRefresh();
-                    }
-                };
+        toggleBtn.onclick = () => {
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                toggleBtn.textContent = 'Collapse';
+            } else {
+                body.style.display = 'none';
+                toggleBtn.textContent = 'Expand';
             }
-        }, 0);
+        };
+        body.scrollTop = body.scrollHeight;
+
+        autoRefreshBtn.onclick = () => {
+            if (logRefreshInterval) {
+                stopLogRefresh();
+            } else {
+                startLogRefresh();
+            }
+        };
 
         return panel;
     }
 
-    async function startLogRefresh() {
+    function startLogRefresh() {
         const autoRefreshBtn = document.getElementById('auto-refresh-log-btn');
         
         if (autoRefreshBtn) {
@@ -722,7 +676,7 @@
         }
 
         if (currentDeploymentId) {
-            await refreshLogAndStatus(currentDeploymentId);
+            refreshLogAndStatus(currentDeploymentId);
         }
 
         logRefreshInterval = setInterval(async () => {
@@ -762,46 +716,7 @@
 
         logBody.innerHTML = '';
 
-        const lines = logText.split('\n').filter(line => line.trim());
-        
-        lines.forEach(line => {
-            const parsed = parseLogLine(line);
-            if (!parsed) return;
-
-            const logLine = document.createElement('div');
-            logLine.style.padding = '2px 0';
-            logLine.style.borderBottom = '1px solid #e0e0e0';
-            
-            if (parsed.isIndented) {
-                logLine.style.paddingLeft = '40px';
-                logLine.style.backgroundColor = '#fafafa';
-            }
-
-            const time = new Date(parsed.timestamp);
-            const timeStr = time.toLocaleTimeString();
-
-            const timeSpan = document.createElement('span');
-            timeSpan.style.color = '#999';
-            timeSpan.style.marginRight = '10px';
-            timeSpan.textContent = timeStr;
-
-            const messageSpan = document.createElement('span');
-            messageSpan.textContent = parsed.message;
-            
-            if (parsed.message.toLowerCase().includes('error')) {
-                messageSpan.style.color = '#d9534f';
-                messageSpan.style.fontWeight = 'bold';
-            } else if (parsed.message.toLowerCase().includes('warning')) {
-                messageSpan.style.color = '#f0ad4e';
-            } else if (parsed.message.toLowerCase().includes('success')) {
-                messageSpan.style.color = '#5cb85c';
-                messageSpan.style.fontWeight = 'bold';
-            }
-
-            logLine.appendChild(timeSpan);
-            logLine.appendChild(messageSpan);
-            logBody.appendChild(logLine);
-        });
+        renderLogLines(logText.split('\n').filter(line => line.trim()), logBody);
 
         if (wasAtBottom) {
             logBody.scrollTop = logBody.scrollHeight;
@@ -828,7 +743,7 @@
     }
 
     function updateLatestDeploymentStatus(statusData) {
-        const latestPanel = document.querySelector('.panel.panel-success, .panel.panel-danger, .panel.panel-info');
+        const latestPanel = document.getElementById('latest-deployment-panel');
         if (!latestPanel) return;
         
         const panelClass = statusData.status === 'Success' ? 'success' : statusData.status === 'Failed' ? 'danger' : 'info';
@@ -856,7 +771,7 @@
                 const duration = isValidTimeRange ? formatDuration(statusData.startTime, statusData.endTime) : 'N/A';
                 p.innerHTML = `<strong>Duration:</strong> ${duration}`;
             } else if (label === 'Complete:') {
-                p.innerHTML = `<strong>Complete:</strong> ${statusData.complete}`;
+                p.innerHTML = `<strong>Complete:</strong> ${escapeHtml(statusData.complete)}`;
             }
         });
     }
@@ -906,9 +821,9 @@
             }
             
             row.innerHTML = `
-                <td><code>${dep.id.substring(0, 8)}</code></td>
-                <td id="status-${dep.id}">${getStatusBadge('Loading')}</td>
-                <td id="message-${dep.id}">Loading...</td>
+                <td><code>${escapeHtml(dep.id.substring(0, 8))}</code></td>
+                <td id="status-${escapeHtml(dep.id)}">${getStatusBadge('Loading')}</td>
+                <td id="message-${escapeHtml(dep.id)}">Loading...</td>
                 <td>${dep.date ? new Date(dep.date).toLocaleString() : 'Unknown'}</td>
                 <td>${isActive ? '<span class="label label-warning">ACTIVE</span>' : ''}</td>
             `;
@@ -935,41 +850,35 @@
         return container;
     }
 
-    async function triggerNewDeployment() {
-        const triggerBtn = event.target;
+    async function triggerNewDeployment(triggerBtn) {
         const originalText = triggerBtn.textContent;
         triggerBtn.disabled = true;
         triggerBtn.textContent = 'Triggering...';
 
         try {
-            const responseFetch = fetch('/api/deployments', {
+            const response = await fetch('/api/deployments', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
 
-            setTimeout(() => {
-                const alert = document.createElement('div');
-                alert.className = 'alert alert-success';
-                alert.textContent = 'Deployment triggered successfully!';
-                alert.style.position = 'fixed';
-                alert.style.top = '70px';
-                alert.style.right = '20px';
-                alert.style.zIndex = '9999';
-                alert.style.minWidth = '300px';
-                document.body.appendChild(alert);
-                
-                setTimeout(() => alert.remove(), 3000);
-                
-                fetchDeploymentData();
-            }, 500);
-
-            const reponse = await responseFetch;
-            if (response.ok) {
-            } else {
+            if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success';
+            alert.textContent = 'Deployment triggered successfully!';
+            alert.style.position = 'fixed';
+            alert.style.top = '70px';
+            alert.style.right = '20px';
+            alert.style.zIndex = '9999';
+            alert.style.minWidth = '300px';
+            document.body.appendChild(alert);
+            setTimeout(() => alert.remove(), 3000);
+
+            fetchDeploymentData();
         } catch (err) {
             const alert = document.createElement('div');
             alert.className = 'alert alert-danger';
@@ -980,7 +889,6 @@
             alert.style.zIndex = '9999';
             alert.style.minWidth = '300px';
             document.body.appendChild(alert);
-            
             setTimeout(() => alert.remove(), 5000);
         } finally {
             triggerBtn.disabled = false;
@@ -1084,6 +992,7 @@
     window.addEventListener('viewer-change', (event) => {
         if (event.detail.viewer !== 'deployments' && isViewerActive) {
             isViewerActive = false;
+            stopLogRefresh();
         }
     });
 

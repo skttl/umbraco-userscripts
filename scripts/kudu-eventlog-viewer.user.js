@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Kudu Event Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.0.0
+// @version      1.1.0
 // @description  Add a styled event log viewer inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
 // @supportURL   https://github.com/skttl/umbraco-userscripts/issues
 // @license      MIT
-// @include      /^https?:\/\/.*\.scm\..*\.umbraco\.io\/.*$/
+// @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-eventlog-viewer.user.js
+// @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-eventlog-viewer.user.js
+// @match        https://*.scm.*.umbraco.io/*
 // @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/screenshots/event_log_viewer.png
 // @grant        none
 // @run-at       document-end
@@ -19,8 +21,15 @@
     (function() {
         'use strict';
 
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
         let isViewerActive = false;
-        let originalContent = null;
 
         function addNavbarLink() {
             const navbar = document.querySelector('body > .navbar:first-child');
@@ -178,7 +187,7 @@
                 const computer = event.querySelector('Computer')?.textContent || '';
 
                 const messages = [...event.querySelectorAll('EventData > Data')]
-                    .map(d => `<li>${d.textContent}</li>`).join('');
+                    .map(d => `<li>${escapeHtml(d.textContent)}</li>`).join('');
 
                 const panel = document.createElement('div');
                 panel.className = `panel panel-${levelLabel(level)}`;
@@ -187,12 +196,12 @@
                 panel.innerHTML = `
                     <div class="panel-heading">
                         <h3 class="panel-title">
-                            Event ${id} – ${provider}
-                            <span class="pull-right" style="font-weight:normal; font-size:0.9em;">${new Date(time).toLocaleString()}</span>
+                            Event ${escapeHtml(id)} – ${escapeHtml(provider)}
+                            <span class="pull-right" style="font-weight:normal; font-size:0.9em;">${escapeHtml(new Date(time).toLocaleString())}</span>
                         </h3>
                     </div>
                     <div class="panel-body">
-                        <p><strong>Computer:</strong> ${computer}</p>
+                        <p><strong>Computer:</strong> ${escapeHtml(computer)}</p>
                         ${messages ? `<ul>${messages}</ul>` : ''}
                     </div>
                 `;

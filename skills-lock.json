@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "develop-userscripts": {
+      "source": "xixu-me/skills",
+      "sourceType": "github",
+      "skillPath": "skills/develop-userscripts/SKILL.md",
+      "computedHash": "6e5ec8cc0c02dac774eb4255615c272505237ac05220997d7ce673756ed1f0a6"
+    }
+  }
+}

@@ -93,6 +93,37 @@ Provides a comprehensive deployment monitoring interface within Kudu, allowing y
 6. Click on any deployment in the history table to view details
 7. Click file counts to view the deployment manifest
 
+### 3. Kudu Umbraco Log Viewer
+
+**File:** `scripts/kudu-umbraco-log-viewer.user.js`
+
+[![Install](https://img.shields.io/badge/Install-Userscript-blue?style=for-the-badge&logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-umbraco-log-viewer.user.js)
+
+Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you to browse and inspect structured log files without leaving the Kudu dashboard.
+
+#### Features
+
+- **File Picker**: Lists available `.json` log files from the Umbraco Logs directory, sorted newest first
+- **Structured Log Display**: Parses Serilog compact JSON format with expandable detail rows
+- **Message Template Rendering**: Interpolates `{PropertyName}` tokens when the rendered message is absent
+- **Color-Coded Level Tags**: Bootstrap labels for each log level (Verbose, Debug, Information, Warning, Error, Fatal)
+- **Expandable Details**: Click any row to reveal exception stack traces, message templates, and all structured properties
+- **Search Filter**: Case-insensitive text search across rendered messages
+- **Log Level Filter**: Checkboxes to show/hide entries by level
+- **Sort Toggle**: Switch between newest-first and oldest-first
+- **Client-Side Pagination**: 100 entries per page with full pagination controls
+- **URL State Management**: Supports deep linking with `?umbracolog` query parameter
+- **Browser History**: Proper back/forward navigation support
+
+#### Usage
+
+1. Navigate to your Umbraco Cloud Kudu interface (e.g., `*.scm.euwest01.umbraco.io`)
+2. Click the "Umbraco Logs" link in the navbar
+3. Select a log file from the dropdown (most recent is selected by default)
+4. Browse log entries — click any row to expand details
+5. Use the search box and level checkboxes to filter entries
+6. Toggle sort order with the sort button
+
 ## Installation
 
 These scripts are designed to be used with a userscript manager browser extension.
@@ -132,7 +163,7 @@ Install a userscript manager extension for your browser:
 
 ## Script Coordination
 
-Both scripts are designed to work together seamlessly:
+All scripts are designed to work together seamlessly:
 - They communicate via custom `viewer-change` events to avoid conflicts
 - Only one viewer is active at a time
 - Switching between viewers properly hides/shows content
@@ -145,6 +176,15 @@ Both scripts are designed to work together seamlessly:
 - **API Endpoint**: `/api/vfs/LogFiles/eventlog.xml`
 - **Data Format**: Windows Event Log XML
 - **Parsing**: Uses browser's native `DOMParser`
+
+### Umbraco Log Viewer
+
+- **API Endpoints**:
+  - `/api/vfs/site/wwwroot/umbraco/Logs/` - List log files (JSON directory listing)
+  - `/api/vfs/site/wwwroot/umbraco/Logs/{filename}` - Fetch log file content
+- **Data Format**: Serilog compact JSON (one JSON object per line)
+- **Fields**: `@t` (timestamp), `@mt` (message template), `@m` (rendered message), `@l` (level), `@x` (exception), plus structured properties
+- **Pagination**: Client-side, 100 entries per page
 
 ### Deployment Viewer
 
@@ -168,7 +208,7 @@ Both scripts are designed to work together seamlessly:
 - Ensure your userscript manager is enabled
 - Check that the script is enabled in the userscript manager
 - Verify you're on a matching URL (e.g., `*.scm.euwest01.umbraco.io`, `*.scm.useast01.umbraco.io`)
-- Scripts use regex matching to support all Umbraco Cloud regions
+- Scripts use `@match https://*.scm.*.umbraco.io/*` to support all Umbraco Cloud regions
 
 ### Event log not displaying
 - Check browser console for errors
@@ -180,11 +220,17 @@ Both scripts are designed to work together seamlessly:
 - Verify API endpoints are accessible
 - Check that deployments exist in `/api/vfs/site/deployments/`
 
+### Umbraco logs not displaying
+- Check browser console for errors
+- Verify the `/api/vfs/site/wwwroot/umbraco/Logs/` directory is accessible
+- Ensure there are `.json` log files in the directory (Serilog compact JSON format)
+
 ## License
 
 These userscripts are provided as-is for use with Umbraco Cloud environments.
 
 ## Version
 
-- **Kudu Event Log Viewer**: v1.0
-- **Umbraco Cloud Deployment Viewer**: v1.0
+- **Kudu Event Log Viewer**: v1.1.0
+- **Umbraco Cloud Deployment Viewer**: v1.1.0
+- **Kudu Umbraco Log Viewer**: v1.0.0
