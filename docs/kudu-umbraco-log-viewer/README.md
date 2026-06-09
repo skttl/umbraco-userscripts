@@ -57,6 +57,9 @@ Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you 
 
 ## Changelog
 
+### Unreleased
+- Pending changes will be listed here before the next manual release and `@version` bump.
+
 ### v1.2.1
 - Changed the `@include` from a regular expression to a glob pattern (`https://*.scm.*.umbraco.io/*`) to avoid the Tampermonkey/ESLint `avoid-regexp-include` performance warning
 

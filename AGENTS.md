@@ -35,18 +35,21 @@ skills-lock.json  Pinned agent skill versions
 ## Making changes
 
 1. Edit the relevant `scripts/*.user.js` file directly.
-2. Bump `@version` in the metadata block for any functional change.
-3. Keep each script self-contained — do not introduce external dependencies or a build pipeline.
-4. Keep documentation in sync for **every** functional change:
-   - `README.md` (root) — update the version number and description in the scripts table.
-   - `docs/<script-name>/README.md` — update the version, feature list, usage steps, and any technical details (API endpoints, data formats, etc.).
-   - `docs/<script-name>/README.md` — append a new `### vX.Y.Z` entry under `## Changelog` describing what changed.
-   - All three updates must be done in the same commit/session as the script change — do not defer doc updates.
-5. If adding a new viewer, follow the existing pattern:
+2. Keep each script self-contained — do not introduce external dependencies or a build pipeline.
+3. Keep documentation in sync for **every** functional change:
+   - `README.md` (root) — update the scripts table description if needed.
+   - `docs/<script-name>/README.md` — update the feature list, usage steps, and any technical details (API endpoints, data formats, etc.).
+   - `docs/<script-name>/README.md` — keep an `## Changelog` section with an `### Unreleased` entry for in-progress work.
+   - Do **not** add release version entries during routine edits; update `@version` in the userscript metadata only when you are preparing a release / push.
+4. If adding a new viewer, follow the existing pattern:
    - Add a navbar `<li>` link
    - Dispatch `viewer-change` when activating
    - Listen for `viewer-change` to deactivate when another viewer opens
    - Manage URL state with `history.pushState` and `?<viewer>` query parameter
+
+## Release reminder
+
+- Before pushing a release, manually bump the `@version` in the relevant userscript and replace the `Unreleased` changelog notes with a dated version entry.
 
 ## Testing
 

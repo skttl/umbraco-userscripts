@@ -77,6 +77,9 @@ Provides a comprehensive deployment monitoring interface within Kudu, allowing y
 
 ## Changelog
 
+### Unreleased
+- Pending changes will be listed here before the next manual release and `@version` bump.
+
 ### v1.1.1
 - Fixed the script not loading: switched from an invalid `@match https://*.scm.*.umbraco.io/*` pattern (mid-host wildcards are not allowed in `@match`) to a glob `@include https://*.scm.*.umbraco.io/*`
 
