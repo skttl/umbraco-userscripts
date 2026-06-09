@@ -1,18 +1,15 @@
 // ==UserScript==
 // @name         Kudu Umbraco Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.2.0
+// @version      1.2.1
 // @description  View Umbraco Serilog JSON log files inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
 // @supportURL   https://github.com/skttl/umbraco-userscripts/issues
 // @license      MIT
-// @include      /^https?:\/\/.*\.scm\..*\.umbraco\.io\/.*$/
+// @include      https://*.scm.*.umbraco.io/*
 // @grant        none
 // @run-at       document-end
-// @compatible   chrome Tampermonkey
-// @compatible   firefox Tampermonkey
-// @compatible   edge Tampermonkey
 // ==/UserScript==
 
 (function() {

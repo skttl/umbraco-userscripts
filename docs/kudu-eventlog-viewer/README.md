@@ -1,6 +1,6 @@
 # Kudu Event Log Viewer
 
-**File:** `scripts/kudu-eventlog-viewer.user.js` — v1.1.0
+**File:** `scripts/kudu-eventlog-viewer.user.js` — v1.1.1
 
 [![Install](https://img.shields.io/badge/Install-Userscript-blue?style=for-the-badge&logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-eventlog-viewer.user.js)
 
@@ -41,6 +41,9 @@ Adds a styled event log viewer directly inside the Kudu interface, making it eas
 - Ensure the event log file exists on the server
 
 ## Changelog
+
+### v1.1.1
+- Fixed the script not loading: switched from an invalid `@match https://*.scm.*.umbraco.io/*` pattern (mid-host wildcards are not allowed in `@match`) to a glob `@include https://*.scm.*.umbraco.io/*`
 
 ### v1.1.0
 - Added proper `@author`, `@homepage`, `@supportURL`, `@license`, `@updateURL`, `@downloadURL` metadata

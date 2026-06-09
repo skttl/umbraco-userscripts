@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kudu Event Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.1.0
+// @version      1.1.1
 // @description  Add a styled event log viewer inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
@@ -9,13 +9,10 @@
 // @license      MIT
 // @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-eventlog-viewer.user.js
 // @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-eventlog-viewer.user.js
-// @match        https://*.scm.*.umbraco.io/*
+// @include      https://*.scm.*.umbraco.io/*
 // @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/docs/kudu-eventlog-viewer/event_log_viewer.png
 // @grant        none
 // @run-at       document-end
-// @compatible   chrome Tampermonkey
-// @compatible   firefox Tampermonkey
-// @compatible   edge Tampermonkey
 // ==/UserScript==
 
     (function() {

@@ -1,6 +1,6 @@
 # Kudu Umbraco Log Viewer
 
-**File:** `scripts/kudu-umbraco-log-viewer.user.js` — v1.2.0
+**File:** `scripts/kudu-umbraco-log-viewer.user.js` — v1.2.1
 
 [![Install](https://img.shields.io/badge/Install-Userscript-blue?style=for-the-badge&logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-umbraco-log-viewer.user.js)
 
@@ -56,6 +56,9 @@ Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you 
 - Ensure there are `.json` log files in the directory (Serilog compact JSON format)
 
 ## Changelog
+
+### v1.2.1
+- Changed the `@include` from a regular expression to a glob pattern (`https://*.scm.*.umbraco.io/*`) to avoid the Tampermonkey/ESLint `avoid-regexp-include` performance warning
 
 ### v1.2.0
 - **File picker grouped by month**: log files are now sorted by last-write date (newest first) and divided into `<optgroup>` sections labelled by year and month (e.g. *2026 May*), using the `mtime` field returned by the Kudu VFS directory API.

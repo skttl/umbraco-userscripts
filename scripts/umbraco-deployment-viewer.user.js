@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Umbraco Cloud Deployment Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.1.0
+// @version      1.1.1
 // @description  Comprehensive deployment monitoring interface for Umbraco Cloud with real-time logs and status tracking
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
@@ -9,13 +9,10 @@
 // @license      MIT
 // @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/umbraco-deployment-viewer.user.js
 // @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/umbraco-deployment-viewer.user.js
-// @match        https://*.scm.*.umbraco.io/*
+// @include      https://*.scm.*.umbraco.io/*
 // @icon         https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/docs/umbraco-deployment-viewer/deployment_status.png
 // @grant        none
 // @run-at       document-end
-// @compatible   chrome Tampermonkey
-// @compatible   firefox Tampermonkey
-// @compatible   edge Tampermonkey
 // ==/UserScript==
 
 (function() {
