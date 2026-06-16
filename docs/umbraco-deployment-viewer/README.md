@@ -80,6 +80,10 @@ Provides a comprehensive deployment monitoring interface within Kudu, allowing y
 ### Unreleased
 - Pending changes will be listed here before the next manual release and `@version` bump.
 
+### v1.1.2
+- Fixed deployment log parsing: messages were being dropped and the GUID field was shown instead. The `log.log` format is `timestamp,message,id,level` — the message is at index 1, not index 2.
+- Fixed `&comma;` HTML entities in log messages (e.g. build errors with column numbers) not being decoded before display.
+
 ### v1.1.1
 - Fixed the script not loading: switched from an invalid `@match https://*.scm.*.umbraco.io/*` pattern (mid-host wildcards are not allowed in `@match`) to a glob `@include https://*.scm.*.umbraco.io/*`
 

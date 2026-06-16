@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Umbraco Cloud Deployment Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.1.1
+// @version      1.1.2
 // @description  Comprehensive deployment monitoring interface for Umbraco Cloud with real-time logs and status tracking
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
@@ -552,7 +552,7 @@
         if (parts.length < 4) return null;
         
         const timestamp = parts[0];
-        const message = parts.slice(2, -1).join(',');
+        const message = parts.slice(1, -2).join(',').replace(/&comma;/g, ',');
         const level = parts[parts.length - 1];
         
         return {
