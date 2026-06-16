@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kudu Umbraco Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.2.1
+// @version      1.3.0
 // @description  View Umbraco Serilog JSON log files inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
