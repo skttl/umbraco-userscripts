@@ -10,11 +10,11 @@ Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you 
 
 ## Features
 
-- **File Picker**: Lists available `.json` log files from the Umbraco Logs directory, sorted by last-write date (newest first) and grouped into `<optgroup>` sections by month (e.g. *2026 May*)
+- **File Picker**: Lists available `.json` log files from the Umbraco Logs directory, sorted by last-write date (newest first) and grouped into `<optgroup>` sections by month (e.g. *2026 May*); a **Download** button appears once a file is loaded to save the raw log file
 - **Structured Log Display**: Parses Serilog compact JSON format with expandable detail rows
 - **Message Template Rendering**: Interpolates `{PropertyName}` tokens when the rendered message is absent
 - **Color-Coded Level Tags**: Bootstrap labels for each log level (Verbose, Debug, Information, Warning, Error, Fatal)
-- **Expandable Details**: Click any row to reveal exception stack traces, message templates, and all structured properties
+- **Expandable Details**: Click any row to reveal exception stack traces, message templates, and all structured properties; **clicking a property value** adds a `PropertyName='value'` clause to the search field
 - **Expression Search**: Serilog-compatible query syntax (`@Level='Error' and @Message like '*timeout*'`) with automatic fallback to plain text for simple terms
 - **Saved Searches**: Save, load, and delete named searches persisted to `localStorage` via a ★ Save button and inline pill buttons
 - **Query Help Modal**: **?** button opens a cheat sheet covering fields, operators, boolean logic, and clickable example queries
@@ -59,6 +59,10 @@ Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you 
 
 ### Unreleased
 - Pending changes will be listed here before the next manual release and `@version` bump.
+
+### v1.3.0
+- **Clickable property values**: clicking a value in the Properties table appends a `PropertyName='value'` filter clause to the search box (joined with `and` if a query is already present) and immediately re-runs the filter.
+- **Download button**: a Download link appears next to the Reload button once a log file is loaded; clicking it triggers a browser download of the raw log file.
 
 ### v1.2.1
 - Changed the `@include` from a regular expression to a glob pattern (`https://*.scm.*.umbraco.io/*`) to avoid the Tampermonkey/ESLint `avoid-regexp-include` performance warning

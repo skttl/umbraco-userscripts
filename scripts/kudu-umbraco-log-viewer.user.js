@@ -432,6 +432,14 @@
         refreshBtn.onclick = () => loadSelectedFile();
         fileRow.appendChild(refreshBtn);
 
+        const downloadLink = document.createElement('a');
+        downloadLink.id = 'umbracolog-download-link';
+        downloadLink.className = 'btn btn-default';
+        downloadLink.style.marginLeft = '6px';
+        downloadLink.textContent = 'Download';
+        downloadLink.style.display = 'none';
+        fileRow.appendChild(downloadLink);
+
         panel.appendChild(fileRow);
 
         // Filter toolbar
@@ -708,6 +716,13 @@
         const toolbar = document.getElementById('umbracolog-toolbar');
         const statusBar = document.getElementById('umbracolog-status');
         const pagination = document.getElementById('umbracolog-pagination');
+        const downloadLink = document.getElementById('umbracolog-download-link');
+
+        if (downloadLink) {
+            downloadLink.href = LOGS_BASE_PATH + encodeURIComponent(filename);
+            downloadLink.download = filename;
+            downloadLink.style.display = '';
+        }
 
         content.innerHTML = '<div class="alert alert-info">Loading log file...</div>';
         toolbar.style.display = 'none';
@@ -1280,25 +1295,68 @@
                 </div>`;
             }
 
-            // Properties
-            const propKeys = Object.keys(entry.properties);
-            if (propKeys.length > 0) {
-                detailHtml += '<div><strong>Properties:</strong>';
-                detailHtml += '<table class="table table-condensed table-bordered" style="margin-top: 4px; background: #fff; font-size: 0.9em;">';
-                detailHtml += '<thead><tr><th style="width: 200px;">Name</th><th>Value</th></tr></thead><tbody>';
-                for (const key of propKeys) {
-                    const val = entry.properties[key];
-                    const display = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
-                    detailHtml += `<tr><td><strong>${escapeHtml(key)}</strong></td><td><code>${escapeHtml(display)}</code></td></tr>`;
-                }
-                detailHtml += '</tbody></table></div>';
-            }
-
             if (!detailHtml) {
                 detailHtml = '<em style="color: #999;">No additional details.</em>';
             }
 
             detailCell.innerHTML = detailHtml;
+
+            // Properties — built as DOM so values can be clicked to add to the search field
+            const propKeys = Object.keys(entry.properties);
+            if (propKeys.length > 0) {
+                const propsDiv = document.createElement('div');
+
+                const propsLabel = document.createElement('strong');
+                propsLabel.textContent = 'Properties:';
+                propsDiv.appendChild(propsLabel);
+
+                const propsTable = document.createElement('table');
+                propsTable.className = 'table table-condensed table-bordered';
+                propsTable.style.cssText = 'margin-top: 4px; background: #fff; font-size: 0.9em;';
+
+                const propsThead = document.createElement('thead');
+                propsThead.innerHTML = '<tr><th style="width: 200px;">Name</th><th>Value</th></tr>';
+                propsTable.appendChild(propsThead);
+
+                const propsTbody = document.createElement('tbody');
+                for (const key of propKeys) {
+                    const val = entry.properties[key];
+                    const display = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
+
+                    const tr = document.createElement('tr');
+
+                    const keyTd = document.createElement('td');
+                    const keyStrong = document.createElement('strong');
+                    keyStrong.textContent = key;
+                    keyTd.appendChild(keyStrong);
+
+                    const valTd = document.createElement('td');
+                    const valCode = document.createElement('code');
+                    valCode.textContent = display;
+                    valCode.title = 'Click to filter by this property value';
+                    valCode.style.cssText = 'cursor:pointer;';
+                    valCode.onclick = (e) => {
+                        e.stopPropagation();
+                        const searchInput = document.getElementById('umbracolog-search');
+                        if (!searchInput) return;
+                        const clause = `${key}='${display.replace(/'/g, "\\'")}'`;
+                        const current = searchInput.value.trim();
+                        searchInput.value = current ? `${current} and ${clause}` : clause;
+                        searchText = searchInput.value;
+                        applyFilters();
+                        renderQueryError();
+                        searchInput.focus();
+                    };
+                    valTd.appendChild(valCode);
+
+                    tr.appendChild(keyTd);
+                    tr.appendChild(valTd);
+                    propsTbody.appendChild(tr);
+                }
+                propsTable.appendChild(propsTbody);
+                propsDiv.appendChild(propsTable);
+                detailCell.appendChild(propsDiv);
+            }
             detailRow.appendChild(detailCell);
 
             // Toggle on click
