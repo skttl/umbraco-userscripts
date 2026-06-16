@@ -7,6 +7,8 @@
 // @homepage     https://github.com/skttl/umbraco-userscripts
 // @supportURL   https://github.com/skttl/umbraco-userscripts/issues
 // @license      MIT
+// @updateURL    https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-umbraco-log-viewer.user.js
+// @downloadURL  https://raw.githubusercontent.com/skttl/umbraco-userscripts/main/scripts/kudu-umbraco-log-viewer.user.js
 // @include      https://*.scm.*.umbraco.io/*
 // @grant        none
 // @run-at       document-end
