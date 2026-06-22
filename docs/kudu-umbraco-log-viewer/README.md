@@ -1,6 +1,6 @@
 # Kudu Umbraco Log Viewer
 
-**File:** `scripts/kudu-umbraco-log-viewer.user.js` — v1.2.1
+**File:** `scripts/kudu-umbraco-log-viewer.user.js` — v1.4.0
 
 [![Install](https://img.shields.io/badge/Install-Userscript-blue?style=for-the-badge&logo=tampermonkey)](https://github.com/skttl/umbraco-userscripts/raw/main/scripts/kudu-umbraco-log-viewer.user.js)
 
@@ -14,13 +14,15 @@ Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you 
 - **Structured Log Display**: Parses Serilog compact JSON format with expandable detail rows
 - **Message Template Rendering**: Interpolates `{PropertyName}` tokens when the rendered message is absent
 - **Color-Coded Level Tags**: Bootstrap labels for each log level (Verbose, Debug, Information, Warning, Error, Fatal)
-- **Expandable Details**: Click any row to reveal exception stack traces, message templates, and all structured properties; **clicking a property value** adds a `PropertyName='value'` clause to the search field
+- **Expandable Details**: Click any row to reveal the full message, exception stack traces, message templates, and all structured properties; **clicking a property value** adds a `PropertyName='value'` clause to the search field, and **clicking the message template** adds a `@mt='...'` clause
 - **Expression Search**: Serilog-compatible query syntax (`@Level='Error' and @Message like '*timeout*'`) with automatic fallback to plain text for simple terms
 - **Saved Searches**: Save, load, and delete named searches persisted to `localStorage` via a ★ Save button and inline pill buttons
 - **Query Help Modal**: **?** button opens a cheat sheet covering fields, operators, boolean logic, and clickable example queries
 - **Log Level Filter**: Dropdown with per-level checkboxes and Select All / None shortcuts
+- **Auto-Reload / Polling**: The Reload button has a caret dropdown to enable continuous automatic reloading every 2, 5, 10, 30, or 60 seconds. While polling is active a countdown label ("Next reload in Ns") appears next to the button; it switches to "Loading…" while the fetch is in progress. Polling stops automatically when the viewer is closed or another viewer is opened.
 - **Sort Toggle**: Switch between newest-first and oldest-first
 - **Momentum Graph**: Stacked bar chart showing message volume across 60 time buckets for the full log span; a dashed overlay line shows the filtered subset when filters are active. Bars are **clickable** — clicking a bucket navigates to the page containing those log entries. Hovering a bar highlights it and shows a floating tooltip with the bucket's time range (e.g. `12:45 – 13:15`) and message count; if the bucket has filtered entries a `click → page N` hint is shown in the tooltip.
+- **Common Log Messages**: The activity graph and common message list are presented in a two-tab panel ("Activity" / "Common Messages"). The Common Messages tab shows a ranked list of all unique message templates in the current file with occurrence counts; the top 5 are immediately visible and a "Show all N messages" toggle expands the list (scrollable, up to 20 rows). Clicking any row applies an `@mt='...'` filter, joining with `and` if a search is already active.
 - **Client-Side Pagination**: 100 entries per page with full pagination controls
 - **URL State Management**: Supports deep linking with `?umbracolog` query parameter
 - **Browser History**: Proper back/forward navigation support
@@ -59,6 +61,14 @@ Adds an Umbraco Serilog JSON log viewer inside the Kudu interface, allowing you 
 
 ### Unreleased
 - Pending changes will be listed here before the next manual release and `@version` bump.
+
+### 1.4.0
+- **Properties table layout fix**: long property values (e.g. large JSON blobs) now wrap inside their table cell instead of overflowing and breaking the layout; the properties table uses `table-layout: fixed` so the Name column stays at a fixed width.
+- **Tabbed graph/messages panel**: the activity graph and common message list are presented in a two-tab panel. The "Activity" tab shows the momentum graph; the "Common Messages" tab shows a ranked list of unique message templates with occurrence counts (top 5 visible, expandable). Clicking any row in the common messages list applies an `@mt='...'` filter.
+- **Auto-Reload polling**: The Reload button is now a Bootstrap split-button group. The caret opens a dropdown to select an automatic reload interval (2 s, 5 s, 10 s, 30 s, 60 s) or turn it off. While active, a countdown label ("Next reload in Ns") is shown inline; it shows "Loading…" during the fetch. Polling stops when the viewer is closed or another viewer tab is activated.
+- **Full message in expanded row**: the rendered message is now shown at the top of the expanded detail panel.
+- **Clickable message template**: clicking the Message Template in the expanded detail panel appends an `@mt='...'` filter clause to the search box (joined with `and` if a query is already present) and immediately re-runs the filter.
+- **No-wrap Machine column**: the Machine Name column no longer wraps.
 
 ### v1.3.0
 - **Clickable property values**: clicking a value in the Properties table appends a `PropertyName='value'` filter clause to the search box (joined with `and` if a query is already present) and immediately re-runs the filter.

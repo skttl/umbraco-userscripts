@@ -136,7 +136,8 @@
 
         const header = document.createElement('div');
         header.className = 'page-header';
-        header.innerHTML = '<h1>Deployment Status</h1>';
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+        header.innerHTML = '<h1 style="margin:0;">Deployment Status</h1><span style="display:inline-flex;align-items:center;gap:10px;font-size:1rem;"><a href="https://skttl.dev" target="_blank" rel="noopener" title="skttl.dev" style="text-decoration:none;color:inherit;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63.7 19.1" style="height:1em;fill:currentColor;display:block;"><path d="m59.7 0-2.3 2a47.9 47.9 0 0 0-6.5 10.9q-2 1-4 1.7l-4.1 1q.7-2.4 2.1-5.3 3.3 0 5.4-.7l-.5-2.6-3.3.6 1.7-2.6-2.1-2a40 40 0 0 0-6 9.9q-2 1-4 1.7l-4.1 1q.7-2.4 2.2-5.3 3.2 0 5.4-.7l-.6-2.6-3.3.6 1.7-2.6-2.1-2a40 40 0 0 0-6 9.9q-2.6 1.3-5.4 2.2-.8-1.6-1.2-2.8l6.8-4.5-2.4-2.3a67 67 0 0 0-6.7 5.5q2.1-4.5 4.5-8.1l-2.5-1.9a90 90 0 0 0-6.4 11.9l-4 1.6-4.1-3.8a10 10 0 0 1 3.7-2.8l-.5 1.1q-.3.9-.9 1.6l2.6 2a19 19 0 0 0 2-4.4l-4-3q-1.8.4-4 2.1a12 12 0 0 0-3 3.4q.2.5.8 1l4 3.8-2.2.5-1.4-1q-.9-.6-2.5-2.4l-2.5 1.8a44 44 0 0 0 5.6 4.7 32 32 0 0 0 9-2.6l-.3.5 2.9 1.9 2.4-6.2q.3 2 1 4l3 2.2q2.4-1.2 4.8-2.6l2.8 2.6q2-.2 4.9-1.2l3-1.4 2.9 2.6q2-.1 4.9-1.2l3-1.4 2.8 2.6q1.5 0 3-.4a22 22 0 0 0 8-3.4l-.4-2.5a20 20 0 0 1-5.5 2.4q-1.6.6-4.6 1l.9-2.5q2-.5 3.7-1.3 5.1-2.8 6-9.3zm1 3q-.5 2.5-1.7 4.5-1.4 2-3.5 3a35 35 0 0 1 5.2-7.6"></path></svg></a><a href="https://github.com/sponsors/skttl" target="_blank" rel="noopener" title="Sponsor skttl on GitHub" style="text-decoration:none;">&#9829; Sponsor</a></span>';
         panel.appendChild(header);
 
         const btnGroup = document.createElement('div');

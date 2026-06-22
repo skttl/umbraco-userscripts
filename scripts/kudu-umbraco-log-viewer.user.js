@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kudu Umbraco Log Viewer
 // @namespace    https://github.com/skttl/umbraco-userscripts
-// @version      1.3.0
+// @version      1.4.0
 // @description  View Umbraco Serilog JSON log files inside Kudu for Umbraco Cloud
 // @author       skttl
 // @homepage     https://github.com/skttl/umbraco-userscripts
@@ -30,6 +30,12 @@
     let activeLevels = new Set(['Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal']);
     let searchText = '';
     let queryError = null;
+
+    // Polling state
+    let pollingInterval = 0;     // seconds; 0 = off
+    let pollingTimer = null;      // setTimeout handle for next reload
+    let pollingCountdown = 0;     // seconds remaining
+    let pollingCountdownTimer = null; // setInterval handle for countdown tick
 
     function escapeHtml(str) {
         return String(str)
@@ -377,6 +383,7 @@
         }
 
         isViewerActive = false;
+        stopPolling();
 
         if (!skipHistory) {
             history.pushState({ view: null }, '', window.location.pathname);
@@ -408,38 +415,101 @@
 
         const header = document.createElement('div');
         header.className = 'page-header';
-        header.innerHTML = '<h1>Umbraco Log Viewer</h1>';
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+        header.innerHTML = '<h1 style="margin:0;">Umbraco Log Viewer</h1><span style="display:inline-flex;align-items:center;gap:10px;font-size:1rem;"><a href="https://skttl.dev" target="_blank" rel="noopener" title="skttl.dev" style="text-decoration:none;color:inherit;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 63.7 19.1" style="height:1em;fill:currentColor;display:block;"><path d="m59.7 0-2.3 2a47.9 47.9 0 0 0-6.5 10.9q-2 1-4 1.7l-4.1 1q.7-2.4 2.1-5.3 3.3 0 5.4-.7l-.5-2.6-3.3.6 1.7-2.6-2.1-2a40 40 0 0 0-6 9.9q-2 1-4 1.7l-4.1 1q.7-2.4 2.2-5.3 3.2 0 5.4-.7l-.6-2.6-3.3.6 1.7-2.6-2.1-2a40 40 0 0 0-6 9.9q-2.6 1.3-5.4 2.2-.8-1.6-1.2-2.8l6.8-4.5-2.4-2.3a67 67 0 0 0-6.7 5.5q2.1-4.5 4.5-8.1l-2.5-1.9a90 90 0 0 0-6.4 11.9l-4 1.6-4.1-3.8a10 10 0 0 1 3.7-2.8l-.5 1.1q-.3.9-.9 1.6l2.6 2a19 19 0 0 0 2-4.4l-4-3q-1.8.4-4 2.1a12 12 0 0 0-3 3.4q.2.5.8 1l4 3.8-2.2.5-1.4-1q-.9-.6-2.5-2.4l-2.5 1.8a44 44 0 0 0 5.6 4.7 32 32 0 0 0 9-2.6l-.3.5 2.9 1.9 2.4-6.2q.3 2 1 4l3 2.2q2.4-1.2 4.8-2.6l2.8 2.6q2-.2 4.9-1.2l3-1.4 2.9 2.6q2-.1 4.9-1.2l3-1.4 2.8 2.6q1.5 0 3-.4a22 22 0 0 0 8-3.4l-.4-2.5a20 20 0 0 1-5.5 2.4q-1.6.6-4.6 1l.9-2.5q2-.5 3.7-1.3 5.1-2.8 6-9.3zm1 3q-.5 2.5-1.7 4.5-1.4 2-3.5 3a35 35 0 0 1 5.2-7.6"></path></svg></a><a href="https://github.com/sponsors/skttl" target="_blank" rel="noopener" title="Sponsor skttl on GitHub" style="text-decoration:none;">&#9829; Sponsor</a></span>';
         panel.appendChild(header);
 
-        // File picker row
+        // File picker row: [Log file:] [SELECT grows] ··· [Loading…] [Reload|v] [Download]
         const fileRow = document.createElement('div');
-        fileRow.className = 'form-inline';
-        fileRow.style.marginBottom = '15px';
+        fileRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:15px;';
 
         const fileLabel = document.createElement('label');
-        fileLabel.textContent = 'Log file: ';
-        fileLabel.style.marginRight = '8px';
+        fileLabel.textContent = 'Log file:';
+        fileLabel.style.cssText = 'margin:0;white-space:nowrap;';
         fileRow.appendChild(fileLabel);
 
         const fileSelect = document.createElement('select');
         fileSelect.id = 'umbracolog-file-select';
         fileSelect.className = 'form-control';
-        fileSelect.style.marginRight = '10px';
+        fileSelect.style.width = 'auto';
+        fileSelect.style.flex = '1';
         fileSelect.onchange = () => loadSelectedFile();
         fileRow.appendChild(fileSelect);
 
+        // --- Reload split-button group ---
+        const reloadGroup = document.createElement('div');
+        reloadGroup.className = 'btn-group';
+        reloadGroup.style.flexShrink = '0';
+
         const refreshBtn = document.createElement('button');
+        refreshBtn.id = 'umbracolog-reload-btn';
         refreshBtn.className = 'btn btn-default';
         refreshBtn.textContent = 'Reload';
-        refreshBtn.onclick = () => loadSelectedFile();
-        fileRow.appendChild(refreshBtn);
+        refreshBtn.onclick = () => { stopPolling(); loadSelectedFile(); };
+        reloadGroup.appendChild(refreshBtn);
+
+        const reloadDropdownBtn = document.createElement('button');
+        reloadDropdownBtn.className = 'btn btn-default dropdown-toggle';
+        reloadDropdownBtn.type = 'button';
+        reloadDropdownBtn.innerHTML = '<span class="caret"></span>';
+        reloadDropdownBtn.title = 'Auto-reload interval';
+        reloadGroup.appendChild(reloadDropdownBtn);
+
+        const reloadMenu = document.createElement('ul');
+        reloadMenu.className = 'dropdown-menu';
+        reloadMenu.style.cssText = 'min-width:130px;';
+
+        const pollOptions = [
+            { label: 'Every 2 seconds',  seconds: 2 },
+            { label: 'Every 5 seconds',  seconds: 5 },
+            { label: 'Every 10 seconds', seconds: 10 },
+            { label: 'Every 30 seconds', seconds: 30 },
+            { label: 'Every 60 seconds', seconds: 60 },
+        ];
+
+        const offItem = document.createElement('li');
+        offItem.id = 'umbracolog-poll-off';
+        offItem.className = 'active';
+        const offA = document.createElement('a');
+        offA.href = '#';
+        offA.textContent = 'Off';
+        offA.onclick = (e) => { e.preventDefault(); stopPolling(); };
+        offItem.appendChild(offA);
+        reloadMenu.appendChild(offItem);
+
+        const divItem = document.createElement('li');
+        divItem.className = 'divider';
+        reloadMenu.appendChild(divItem);
+
+        for (const opt of pollOptions) {
+            const li = document.createElement('li');
+            li.dataset.pollSeconds = opt.seconds;
+            const a = document.createElement('a');
+            a.href = '#';
+            a.textContent = opt.label;
+            a.onclick = (e) => { e.preventDefault(); startPolling(opt.seconds); };
+            li.appendChild(a);
+            reloadMenu.appendChild(li);
+        }
+
+        reloadGroup.appendChild(reloadMenu);
+
+        // Toggle dropdown visibility
+        reloadDropdownBtn.onclick = (e) => {
+            e.stopPropagation();
+            const open = reloadMenu.style.display === 'block';
+            reloadMenu.style.display = open ? 'none' : 'block';
+        };
+        document.addEventListener('click', () => { reloadMenu.style.display = 'none'; });
+
+        fileRow.appendChild(reloadGroup);
 
         const downloadLink = document.createElement('a');
         downloadLink.id = 'umbracolog-download-link';
         downloadLink.className = 'btn btn-default';
-        downloadLink.style.marginLeft = '6px';
         downloadLink.textContent = 'Download';
         downloadLink.style.display = 'none';
+        downloadLink.style.flexShrink = '0';
         fileRow.appendChild(downloadLink);
 
         panel.appendChild(fileRow);
@@ -617,10 +687,34 @@
 
         panel.appendChild(toolbar);
 
-        // Momentum graph
+        // Tabbed panel: Activity graph + Common Messages
+        const tabsWrapper = document.createElement('div');
+        tabsWrapper.id = 'umbracolog-tabs-wrapper';
+        tabsWrapper.style.cssText = 'display:none;margin-bottom:16px;';
+
+        // Tab nav
+        const tabNav = document.createElement('ul');
+        tabNav.className = 'nav nav-tabs';
+        tabNav.style.cssText = 'margin-bottom:0;border-bottom:1px solid #ddd;';
+
+        const tabActivity = document.createElement('li');
+        tabActivity.className = 'active';
+        tabActivity.innerHTML = '<a href="#" data-tab="graph" style="padding:6px 12px;font-size:13px;">Activity</a>';
+
+        const tabCommon = document.createElement('li');
+        tabCommon.innerHTML = '<a href="#" data-tab="common" style="padding:6px 12px;font-size:13px;">Common Messages</a>';
+
+        tabNav.appendChild(tabActivity);
+        tabNav.appendChild(tabCommon);
+        tabsWrapper.appendChild(tabNav);
+
+        // Tab content area
+        const tabContent = document.createElement('div');
+        tabContent.style.cssText = 'border:1px solid #ddd;border-top:none;border-radius:0 0 3px 3px;padding:12px;background:#fff;';
+
+        // Pane: graph
         const graphContainer = document.createElement('div');
         graphContainer.id = 'umbracolog-graph-container';
-        graphContainer.style.cssText = 'display:none;margin-bottom:16px;';
 
         const graphCanvas = document.createElement('canvas');
         graphCanvas.id = 'umbracolog-graph';
@@ -633,7 +727,28 @@
         graphLegend.style.cssText = 'font-size:11px;color:#999;text-align:right;margin-top:2px;';
         graphContainer.appendChild(graphLegend);
 
-        panel.appendChild(graphContainer);
+        // Pane: common messages
+        const commonMsgContainer = document.createElement('div');
+        commonMsgContainer.id = 'umbracolog-common-messages';
+        commonMsgContainer.style.display = 'none';
+
+        tabContent.appendChild(graphContainer);
+        tabContent.appendChild(commonMsgContainer);
+        tabsWrapper.appendChild(tabContent);
+        panel.appendChild(tabsWrapper);
+
+        // Tab switching logic
+        tabNav.addEventListener('click', (e) => {
+            const a = e.target.closest('a[data-tab]');
+            if (!a) return;
+            e.preventDefault();
+            const which = a.dataset.tab;
+            tabNav.querySelectorAll('li').forEach(li => li.classList.remove('active'));
+            a.parentElement.classList.add('active');
+            graphContainer.style.display = which === 'graph' ? 'block' : 'none';
+            commonMsgContainer.style.display = which === 'common' ? 'block' : 'none';
+            if (which === 'graph') renderMomentumGraph();
+        });
 
         // Status bar
         const statusBar = document.createElement('div');
@@ -654,6 +769,84 @@
         panel.appendChild(paginationContainer);
 
         document.body.appendChild(panel);
+    }
+
+    // --- Polling helpers ---
+
+    function updatePollUI() {
+        const reloadBtn = document.getElementById('umbracolog-reload-btn');
+        const offItem = document.getElementById('umbracolog-poll-off');
+
+        // Update "active" highlight on menu items
+        const menu = offItem ? offItem.parentElement : null;
+        if (menu) {
+            menu.querySelectorAll('li[data-poll-seconds]').forEach(li => {
+                li.classList.toggle('active', Number(li.dataset.pollSeconds) === pollingInterval);
+            });
+            if (offItem) offItem.classList.toggle('active', pollingInterval === 0);
+        }
+
+        if (!reloadBtn) return;
+
+        if (pollingInterval === 0) {
+            reloadBtn.textContent = 'Reload';
+        } else {
+            reloadBtn.textContent = `Reloading in ${pollingCountdown}s`;
+        }
+    }
+
+    function stopPolling() {
+        if (pollingTimer) { clearTimeout(pollingTimer); pollingTimer = null; }
+        if (pollingCountdownTimer) { clearInterval(pollingCountdownTimer); pollingCountdownTimer = null; }
+        pollingInterval = 0;
+        pollingCountdown = 0;
+        updatePollUI();
+    }
+
+    function startPolling(seconds) {
+        stopPolling();
+        pollingInterval = seconds;
+        pollingCountdown = seconds;
+        updatePollUI();
+
+        pollingCountdownTimer = setInterval(() => {
+            pollingCountdown = Math.max(0, pollingCountdown - 1);
+            const btn = document.getElementById('umbracolog-reload-btn');
+            if (btn && pollingInterval > 0) {
+                btn.textContent = `Reloading in ${pollingCountdown}s`;
+            }
+        }, 1000);
+
+        pollingTimer = setTimeout(() => {
+            scheduledReload();
+        }, seconds * 1000);
+    }
+
+    async function scheduledReload() {
+        if (pollingInterval === 0) return;
+
+        // Stop the countdown ticker — loadSelectedFile will show "Loading…" and restore when done
+        if (pollingCountdownTimer) { clearInterval(pollingCountdownTimer); pollingCountdownTimer = null; }
+
+        await loadSelectedFile();
+
+        // Re-arm if polling is still active
+        if (pollingInterval > 0) {
+            pollingCountdown = pollingInterval;
+            updatePollUI();
+
+            pollingCountdownTimer = setInterval(() => {
+                pollingCountdown = Math.max(0, pollingCountdown - 1);
+                const btn = document.getElementById('umbracolog-reload-btn');
+                if (btn && pollingInterval > 0) {
+                    btn.textContent = `Reloading in ${pollingCountdown}s`;
+                }
+            }, 1000);
+
+            pollingTimer = setTimeout(() => {
+                scheduledReload();
+            }, pollingInterval * 1000);
+        }
     }
 
     // --- File listing & loading ---
@@ -719,6 +912,7 @@
         const statusBar = document.getElementById('umbracolog-status');
         const pagination = document.getElementById('umbracolog-pagination');
         const downloadLink = document.getElementById('umbracolog-download-link');
+        const reloadBtn = document.getElementById('umbracolog-reload-btn');
 
         if (downloadLink) {
             downloadLink.href = LOGS_BASE_PATH + encodeURIComponent(filename);
@@ -726,8 +920,12 @@
             downloadLink.style.display = '';
         }
 
-        content.innerHTML = '<div class="alert alert-info">Loading log file...</div>';
+        if (reloadBtn) reloadBtn.textContent = 'Loading\u2026';
+
+        content.innerHTML = '';
         toolbar.style.display = 'none';
+        const tabsWrapperEl = document.getElementById('umbracolog-tabs-wrapper');
+        if (tabsWrapperEl) tabsWrapperEl.style.display = 'none';
         statusBar.textContent = '';
         pagination.innerHTML = '';
 
@@ -760,6 +958,12 @@
             }
         } catch (err) {
             content.innerHTML = `<div class="alert alert-danger">Failed to load log file: ${escapeHtml(err.message)}</div>`;
+        } finally {
+            // Restore button text: countdown if polling is still active, otherwise "Reload"
+            const btn = document.getElementById('umbracolog-reload-btn');
+            if (btn) {
+                btn.textContent = pollingInterval > 0 ? `Reloading in ${pollingCountdown}s` : 'Reload';
+            }
         }
     }
 
@@ -804,6 +1008,7 @@
 
         currentPage = 1;
         renderMomentumGraph();
+        renderCommonMessages();
         renderCurrentPage();
     }
 
@@ -975,20 +1180,21 @@
     }
 
     function renderMomentumGraph() {
+        const wrapper = document.getElementById('umbracolog-tabs-wrapper');
         const container = document.getElementById('umbracolog-graph-container');
         const canvas = document.getElementById('umbracolog-graph');
         const legend = document.getElementById('umbracolog-graph-legend');
         if (!container || !canvas || !legend) return;
 
         if (allEntries.length === 0) {
-            container.style.display = 'none';
+            if (wrapper) wrapper.style.display = 'none';
             return;
         }
 
-        container.style.display = 'block';
+        if (wrapper) wrapper.style.display = 'block';
 
         const timestamps = allEntries.map(e => new Date(e.timestamp).getTime()).filter(t => !isNaN(t));
-        if (timestamps.length === 0) { container.style.display = 'none'; return; }
+        if (timestamps.length === 0) { if (wrapper) wrapper.style.display = 'none'; return; }
 
         const minT = Math.min(...timestamps);
         const maxT = Math.max(...timestamps);
@@ -1206,6 +1412,104 @@
 
     }
 
+    function renderCommonMessages() {
+        const container = document.getElementById('umbracolog-common-messages');
+        if (!container) return;
+
+        if (allEntries.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        // Count occurrences of each message template across ALL loaded entries
+        const counts = {};
+        for (const entry of allEntries) {
+            const tpl = entry.messageTemplate || entry.renderedMessage;
+            if (!tpl) continue;
+            counts[tpl] = (counts[tpl] || 0) + 1;
+        }
+
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        const total = sorted.length;
+        const INITIAL_VISIBLE = 5;
+
+        container.innerHTML = '';
+
+        // Subtitle: unique count
+        const subtitle = document.createElement('div');
+        subtitle.style.cssText = 'font-size:12px;color:#999;margin-bottom:6px;';
+        subtitle.textContent = `${total} unique message type${total !== 1 ? 's' : ''}`;
+        container.appendChild(subtitle);
+
+        // Scrollable list container (shows top 5, rest hidden under scroll)
+        const listWrap = document.createElement('div');
+        listWrap.style.cssText = 'border:1px solid #ddd;border-radius:3px;overflow:hidden;';
+
+        const listInner = document.createElement('div');
+        listInner.style.cssText = `max-height:${INITIAL_VISIBLE * 36}px;overflow-y:auto;`;
+
+        const table = document.createElement('table');
+        table.className = 'table table-condensed table-hover';
+        table.style.cssText = 'margin:0;table-layout:fixed;';
+
+        const tbody = document.createElement('tbody');
+
+        sorted.forEach(([tpl, count]) => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.title = 'Click to filter by this message template';
+
+            const tdMsg = document.createElement('td');
+            tdMsg.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;font-size:12px;';
+            tdMsg.textContent = tpl;
+
+            const tdCount = document.createElement('td');
+            tdCount.style.cssText = 'width:60px;text-align:right;padding:6px 10px;font-size:12px;color:#777;white-space:nowrap;';
+            tdCount.textContent = count;
+
+            tr.appendChild(tdMsg);
+            tr.appendChild(tdCount);
+
+            tr.onmouseenter = () => { tr.style.backgroundColor = '#f5f5f5'; };
+            tr.onmouseleave = () => { tr.style.backgroundColor = ''; };
+
+            tr.onclick = () => {
+                const searchInput = document.getElementById('umbracolog-search');
+                if (!searchInput) return;
+                const clause = `@mt='${tpl.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+                const current = searchInput.value.trim();
+                searchInput.value = current ? `${current} and ${clause}` : clause;
+                searchText = searchInput.value;
+                applyFilters();
+                renderQueryError();
+                searchInput.focus();
+            };
+
+            tbody.appendChild(tr);
+        });
+
+        table.appendChild(tbody);
+        listInner.appendChild(table);
+        listWrap.appendChild(listInner);
+        container.appendChild(listWrap);
+
+        // "Show all / Show less" toggle when there are more than INITIAL_VISIBLE templates
+        if (total > INITIAL_VISIBLE) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'btn btn-xs btn-link';
+            toggleBtn.style.cssText = 'margin-top:4px;padding:0;font-size:12px;';
+            let expanded = false;
+            const rowHeight = 36;
+            toggleBtn.textContent = `Show all ${total} messages`;
+            toggleBtn.onclick = () => {
+                expanded = !expanded;
+                listInner.style.maxHeight = expanded ? `${Math.min(total, 20) * rowHeight}px` : `${INITIAL_VISIBLE * rowHeight}px`;
+                toggleBtn.textContent = expanded ? 'Show fewer messages' : `Show all ${total} messages`;
+            };
+            container.appendChild(toggleBtn);
+        }
+    }
+
     function shadeColor(color, amount) {
         const num = parseInt(color.replace('#', ''), 16);
         const r = Math.min(255, Math.max(0, (num >> 16) + amount));
@@ -1266,7 +1570,7 @@
             row.innerHTML = `
                 <td style="white-space: nowrap; font-size: 0.9em;">${escapeHtml(new Date(entry.timestamp).toLocaleString())}</td>
                 <td><span class="label ${levelToLabelClass(entry.level)}"${entry.level === 'Fatal' ? ' style="font-weight:bold;"' : ''}>${escapeHtml(entry.level)}</span></td>
-                <td style="font-size: 0.9em;">${escapeHtml(machineName)}</td>
+                <td style="white-space: nowrap; font-size: 0.9em;">${escapeHtml(machineName)}</td>
                 <td style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(entry.renderedMessage)}</td>
             `;
 
@@ -1281,6 +1585,14 @@
 
             let detailHtml = '';
 
+            // Full message
+            if (entry.renderedMessage) {
+                detailHtml += `<div style="margin-bottom: 10px;">
+                    <strong>Message:</strong>
+                    <div style="margin-top: 4px; padding: 6px; background: #fff; border: 1px solid #ddd; word-break: break-all; white-space: pre-wrap; overflow-wrap: break-word; font-size: 0.9em;">${escapeHtml(entry.renderedMessage)}</div>
+                </div>`;
+            }
+
             // Exception
             if (entry.exception) {
                 detailHtml += `<div style="margin-bottom: 10px;">
@@ -1289,19 +1601,40 @@
                 </div>`;
             }
 
-            // Message template
-            if (entry.messageTemplate) {
-                detailHtml += `<div style="margin-bottom: 10px;">
-                    <strong>Message Template:</strong>
-                    <code style="display: block; margin-top: 4px; padding: 6px; background: #fff; border: 1px solid #ddd; word-break: break-all;">${escapeHtml(entry.messageTemplate)}</code>
-                </div>`;
-            }
-
             if (!detailHtml) {
                 detailHtml = '<em style="color: #999;">No additional details.</em>';
             }
 
             detailCell.innerHTML = detailHtml;
+
+            // Message template — built as DOM so it can be clicked to add to the search field
+            if (entry.messageTemplate) {
+                const mtDiv = document.createElement('div');
+                mtDiv.style.cssText = 'margin-bottom: 10px;';
+
+                const mtLabel = document.createElement('strong');
+                mtLabel.textContent = 'Message Template:';
+                mtDiv.appendChild(mtLabel);
+
+                const mtCode = document.createElement('code');
+                mtCode.textContent = entry.messageTemplate;
+                mtCode.title = 'Click to filter by this message template';
+                mtCode.style.cssText = 'display:block; margin-top:4px; padding:6px; background:#fff; border:1px solid #ddd; word-break:break-all; white-space:pre-wrap; overflow-wrap:break-word; cursor:pointer;';
+                mtCode.onclick = (e) => {
+                    e.stopPropagation();
+                    const searchInput = document.getElementById('umbracolog-search');
+                    if (!searchInput) return;
+                    const clause = `@mt='${entry.messageTemplate.replace(/'/g, "\\'")}'`;
+                    const current = searchInput.value.trim();
+                    searchInput.value = current ? `${current} and ${clause}` : clause;
+                    searchText = searchInput.value;
+                    applyFilters();
+                    renderQueryError();
+                    searchInput.focus();
+                };
+                mtDiv.appendChild(mtCode);
+                detailCell.appendChild(mtDiv);
+            }
 
             // Properties — built as DOM so values can be clicked to add to the search field
             const propKeys = Object.keys(entry.properties);
@@ -1314,7 +1647,7 @@
 
                 const propsTable = document.createElement('table');
                 propsTable.className = 'table table-condensed table-bordered';
-                propsTable.style.cssText = 'margin-top: 4px; background: #fff; font-size: 0.9em;';
+                propsTable.style.cssText = 'margin-top: 4px; background: #fff; font-size: 0.9em; table-layout: fixed; width: 100%;';
 
                 const propsThead = document.createElement('thead');
                 propsThead.innerHTML = '<tr><th style="width: 200px;">Name</th><th>Value</th></tr>';
@@ -1333,10 +1666,11 @@
                     keyTd.appendChild(keyStrong);
 
                     const valTd = document.createElement('td');
+                    valTd.style.cssText = 'max-width: 0; overflow: hidden;';
                     const valCode = document.createElement('code');
                     valCode.textContent = display;
                     valCode.title = 'Click to filter by this property value';
-                    valCode.style.cssText = 'cursor:pointer;';
+                    valCode.style.cssText = 'cursor:pointer; word-break: break-all; white-space: pre-wrap; overflow-wrap: break-word; display: block;';
                     valCode.onclick = (e) => {
                         e.stopPropagation();
                         const searchInput = document.getElementById('umbracolog-search');
@@ -1471,6 +1805,7 @@
     window.addEventListener('viewer-change', (event) => {
         if (event.detail.viewer !== VIEWER_NAME && isViewerActive) {
             isViewerActive = false;
+            stopPolling();
         }
     });
 
